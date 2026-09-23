@@ -10,50 +10,53 @@ ClientPageLayout {
 
     SenseCard {
         Layout.fillWidth: true
+        title: "HTTP"
+        iconName: "cloud"
 
-        ColumnLayout {
-            anchors.fill: parent
-            anchors.margins: SenseSpacing.spacer4
-            spacing: SenseSpacing.spacer3
-
-            RowLayout {
-                Layout.fillWidth: true
+        body: Component {
+            ColumnLayout {
+                width: parent ? parent.width : 360
                 spacing: SenseSpacing.spacer3
 
-                SenseButton {
-                    text: "Health"
-                    variant: "primary"
-                    iconLeft: "heart-pulse"
-                    enabled: !ClientBackend.restBusy
+                RowLayout {
                     Layout.fillWidth: true
-                    onClicked: ClientBackend.restHealth()
+                    spacing: SenseSpacing.spacer3
+
+                    SenseButton {
+                        text: "Health"
+                        variant: "primary"
+                        iconLeft: "heart-pulse"
+                        enabled: !ClientBackend.restBusy
+                        Layout.fillWidth: true
+                        onClicked: ClientBackend.restHealth()
+                    }
+                    SenseButton {
+                        text: "Echo"
+                        variant: "secondary"
+                        iconLeft: "message"
+                        enabled: !ClientBackend.restBusy
+                        Layout.fillWidth: true
+                        onClicked: ClientBackend.restEcho()
+                    }
                 }
-                SenseButton {
-                    text: "Echo"
-                    variant: "secondary"
-                    iconLeft: "message"
-                    enabled: !ClientBackend.restBusy
+
+                SenseMetricCard {
                     Layout.fillWidth: true
-                    onClicked: ClientBackend.restEcho()
+                    metricTitle: "/health"
+                    value: ClientBackend.lastRestHealth.length > 0
+                           ? ClientBackend.lastRestHealth
+                           : "—"
+                    icon: "chart-line"
                 }
-            }
 
-            SenseMetricCard {
-                Layout.fillWidth: true
-                metricTitle: "/health"
-                value: ClientBackend.lastRestHealth.length > 0
-                       ? ClientBackend.lastRestHealth
-                       : "—"
-                icon: "chart-line"
-            }
-
-            SenseMetricCard {
-                Layout.fillWidth: true
-                metricTitle: "/api/v1/echo"
-                value: ClientBackend.lastRestEcho.length > 0
-                       ? ClientBackend.lastRestEcho
-                       : "—"
-                icon: "comment-dots"
+                SenseMetricCard {
+                    Layout.fillWidth: true
+                    metricTitle: "/api/v1/echo"
+                    value: ClientBackend.lastRestEcho.length > 0
+                           ? ClientBackend.lastRestEcho
+                           : "—"
+                    icon: "comment-dots"
+                }
             }
         }
     }

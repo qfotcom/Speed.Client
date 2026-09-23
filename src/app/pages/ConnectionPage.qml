@@ -10,30 +10,33 @@ ClientPageLayout {
 
     SenseCard {
         Layout.fillWidth: true
+        title: "服务器"
+        iconName: "server"
 
-        ColumnLayout {
-            anchors.fill: parent
-            anchors.margins: SenseSpacing.spacer4
-            spacing: SenseSpacing.spacer3
+        body: Component {
+            ColumnLayout {
+                width: parent ? parent.width : 360
+                spacing: SenseSpacing.spacer3
 
-            SenseFormField { label: "主机"; Layout.fillWidth: true
                 SenseInput {
-                    text: ClientBackend.host
+                    Layout.fillWidth: true
+                    label: "主机"
                     placeholder: "10.0.2.2 或 192.168.x.x"
+                    text: ClientBackend.host
                     onInputFocusChanged: function (focused) {
                         if (!focused)
                             ClientBackend.host = text
                     }
                     onAccepted: ClientBackend.host = text
                 }
-            }
 
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: SenseSpacing.spacer3
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: SenseSpacing.spacer3
 
-                SenseFormField { label: "Legacy 端口"; Layout.fillWidth: true
                     SenseInput {
+                        Layout.fillWidth: true
+                        label: "Legacy 端口"
                         text: String(ClientBackend.legacyPort)
                         textField.inputMethodHints: Qt.ImhDigitsOnly
                         onInputFocusChanged: function (focused) {
@@ -42,9 +45,9 @@ ClientPageLayout {
                         }
                         onAccepted: ClientBackend.legacyPort = parseInt(text) || 9001
                     }
-                }
-                SenseFormField { label: "REST 端口"; Layout.fillWidth: true
                     SenseInput {
+                        Layout.fillWidth: true
+                        label: "REST 端口"
                         text: String(ClientBackend.restPort)
                         textField.inputMethodHints: Qt.ImhDigitsOnly
                         onInputFocusChanged: function (focused) {
@@ -54,10 +57,10 @@ ClientPageLayout {
                         onAccepted: ClientBackend.restPort = parseInt(text) || 8080
                     }
                 }
-            }
 
-            SenseFormField { label: "Echo 文本"; Layout.fillWidth: true
                 SenseInput {
+                    Layout.fillWidth: true
+                    label: "Echo 文本"
                     text: ClientBackend.echoText
                     onInputFocusChanged: function (focused) {
                         if (!focused)
@@ -65,10 +68,10 @@ ClientPageLayout {
                     }
                     onAccepted: ClientBackend.echoText = text
                 }
-            }
 
-            SenseFormField { label: "订阅 Topic"; Layout.fillWidth: true
                 SenseInput {
+                    Layout.fillWidth: true
+                    label: "订阅 Topic"
                     text: ClientBackend.subscribeTopic
                     onInputFocusChanged: function (focused) {
                         if (!focused)
@@ -76,35 +79,35 @@ ClientPageLayout {
                     }
                     onAccepted: ClientBackend.subscribeTopic = text
                 }
-            }
 
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: SenseSpacing.spacer3
-
-                SenseButton {
-                    text: "保存配置"
-                    variant: "primary"
-                    iconLeft: "floppy-disk"
+                RowLayout {
                     Layout.fillWidth: true
-                    onClicked: ClientBackend.saveSettings()
-                }
-                SenseButton {
-                    text: ClientBackend.legacyConnected ? "断开 Legacy" : "连接 Legacy"
-                    variant: ClientBackend.legacyConnected ? "outline" : "secondary"
-                    iconLeft: ClientBackend.legacyConnected ? "plug-circle-xmark" : "plug-circle-check"
-                    Layout.fillWidth: true
-                    onClicked: ClientBackend.legacyConnected
-                                 ? ClientBackend.disconnectLegacy()
-                                 : ClientBackend.connectLegacy()
-                }
-            }
+                    spacing: SenseSpacing.spacer3
 
-            SenseAlert {
-                Layout.fillWidth: true
-                type: ClientBackend.legacyConnected ? "success" : "info"
-                title: ClientBackend.legacyConnected ? "Legacy 已连接" : "Legacy 未连接"
-                description: "REST 为无状态 HTTP，无需单独连接。"
+                    SenseButton {
+                        text: "保存配置"
+                        variant: "primary"
+                        iconLeft: "floppy-disk"
+                        Layout.fillWidth: true
+                        onClicked: ClientBackend.saveSettings()
+                    }
+                    SenseButton {
+                        text: ClientBackend.legacyConnected ? "断开 Legacy" : "连接 Legacy"
+                        variant: ClientBackend.legacyConnected ? "outline" : "secondary"
+                        iconLeft: ClientBackend.legacyConnected ? "plug-circle-xmark" : "plug-circle-check"
+                        Layout.fillWidth: true
+                        onClicked: ClientBackend.legacyConnected
+                                     ? ClientBackend.disconnectLegacy()
+                                     : ClientBackend.connectLegacy()
+                    }
+                }
+
+                SenseAlert {
+                    Layout.fillWidth: true
+                    type: ClientBackend.legacyConnected ? "success" : "info"
+                    title: ClientBackend.legacyConnected ? "Legacy 已连接" : "Legacy 未连接"
+                    description: "REST 为无状态 HTTP，无需单独连接。"
+                }
             }
         }
     }

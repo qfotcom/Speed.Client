@@ -1,5 +1,7 @@
 #include "ClientBackend.h"
 
+#include <QDateTime>
+
 #include "config/client_settings.hpp"
 #include "legacy/legacy_client.hpp"
 #include "rest/rest_client.hpp"
@@ -251,7 +253,9 @@ void ClientBackend::clearLog()
 
 void ClientBackend::appendLog(const QString &line)
 {
-    event_log_.prepend(line);
+    const QString stamped =
+        QDateTime::currentDateTime().toString(QStringLiteral("HH:mm:ss")) + QStringLiteral("  ") + line;
+    event_log_.prepend(stamped);
     while (event_log_.size() > 200) {
         event_log_.removeLast();
     }
