@@ -10,8 +10,8 @@
 namespace {
 
 #if defined(Q_OS_ANDROID)
-constexpr int kWindowFullscreenFlag = 1024;
-constexpr int kAppearanceLightStatusBars = 8;
+constexpr int kWindowFullscreenFlag = 1024; // WindowManager.LayoutParams.FLAG_FULLSCREEN
+constexpr int kAppearanceLightStatusBars = 8; // WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS
 constexpr int kSystemUiFlagLightStatusBar = 0x00002000;
 
 QJniObject androidActivityWindow()
@@ -33,7 +33,8 @@ void clearAndroidFullscreenFlag()
     window.callMethod<void>("clearFlags", "(I)V", kWindowFullscreenFlag);
 }
 
-void applyStatusBarOnAndroid(const QColor &color, bool lightStatusBarIcons)
+/** darkStatusBarIcons=true → Android LIGHT_STATUS_BARS（深色图标，用于浅色背景） */
+void applyStatusBarOnAndroid(const QColor &color, bool darkStatusBarIcons)
 {
     QJniObject window = androidActivityWindow();
     if (!window.isValid()) {
@@ -54,7 +55,7 @@ void applyStatusBarOnAndroid(const QColor &color, bool lightStatusBarIcons)
     QJniObject insetsController =
         window.callObjectMethod("getInsetsController", "()Landroid/view/WindowInsetsController;");
     if (insetsController.isValid()) {
-        if (lightStatusBarIcons) {
+        if (darkStatusBarIcons) {
             insetsController.callMethod<void>("setSystemBarsAppearance", "(II)V",
                                               kAppearanceLightStatusBars, kAppearanceLightStatusBars);
         } else {
@@ -65,7 +66,7 @@ void applyStatusBarOnAndroid(const QColor &color, bool lightStatusBarIcons)
     }
 
     int visibility = decorView.callMethod<jint>("getSystemUiVisibility", "()I");
-    if (lightStatusBarIcons) {
+    if (darkStatusBarIcons) {
         visibility |= kSystemUiFlagLightStatusBar;
     } else {
         visibility &= ~kSystemUiFlagLightStatusBar;
@@ -118,9 +119,26 @@ void AndroidSystemUiBridge::applyStatusBarColorValue(const QColor &color)
         return;
     }
     const QColor copy = color;
-    const bool lightIcons = isLightBackground(copy);
-    runOnAndroidUiThread([copy, lightIcons]() { applyStatusBarOnAndroid(copy, lightIcons); });
+    const bool darkIcons = isLightBackground(copy);
+    runOnAndroidUiThread([copy, darkIcons]() { applyStatusBarOnAndroid(copy, darkIcons); });
 #else
     Q_UNUSED(color);
+#endif
+}
+
+void AndroidSystemUiBridge::applyStatusBarForTheme(bool darkTheme, const QString &backgroundColor)
+{
+#if defined(Q_OS_ANDROID)
+    const QColor color(backgroundColor);
+    if (!color.isValid()) {
+        return;
+    }
+    const QColor copy = color;
+    // 深色主题 → 浅色（白）图标；浅色主题 → 深色图标
+    const bool darkIcons = !darkTheme;
+    runOnAndroidUiThread([copy, darkIcons]() { applyStatusBarOnAndroid(copy, darkIcons); });
+#else
+    Q_UNUSED(darkTheme);
+    Q_UNUSED(backgroundColor);
 #endif
 }

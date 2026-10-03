@@ -131,14 +131,12 @@ Item {
                     }
                 }
 
-                ShadcnAlert {
+                ClientStatusAlert {
                     Layout.fillWidth: true
-                    variant: "secondary"
-                    ShadcnAlertTitle { text: qsTr("联调提示") }
-                    ShadcnAlertDescription {
-                        text: qsTr("服务端执行 PUB %1 <payload>；订阅并轮询 PING 后应看到 [PUSH] 日志。")
-                              .arg(ClientBackend.subscribeTopic)
-                    }
+                    tone: "neutral"
+                    title: qsTr("联调提示")
+                    description: qsTr("服务端执行 PUB %1 <payload>；订阅并轮询 PING 后应看到 [PUSH] 日志。")
+                                 .arg(ClientBackend.subscribeTopic)
                 }
             }
         }

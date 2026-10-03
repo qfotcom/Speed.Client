@@ -19,6 +19,8 @@ ShadcnAppWindow {
         parent: shell.contentItem
         anchors.fill: parent
         showTrigger: false
+        showCloseButton: true
+        stackTop: 12
         z: 1000
         defaultDuration: 3500
     }
