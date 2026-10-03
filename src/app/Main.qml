@@ -1,54 +1,32 @@
 import QtQuick
 import SenseAppShell 1.0
-import SenseDesign 1.0
+import SenseDesign
+import "page-config.js" as PageConfig
 
-SenseAppWindow {
+ShadcnAppWindow {
     id: shell
 
-    appTitle: "SpeedClient"
-    appIcon: "bolt"
-    currentPage: "connection"
+    docSiteChrome: false
+    appTitle: qsTr("SpeedClient")
     pagePathPrefix: Qt.resolvedUrl("pages/")
+    pageConfig: PageConfig.pages
+    navGroups: PageConfig.navGroups
+    navGroupOrder: PageConfig.navGroupOrder
+    currentPage: "connection"
 
-    navGroupOrder: ["client"]
-    navGroups: ({ "client": "SpeedClient" })
-
-    pageConfig: [
-        {
-            id: "connection",
-            name: "连接",
-            icon: "plug",
-            group: "client",
-            component: "ConnectionPage"
-        },
-        {
-            id: "rest",
-            name: "REST",
-            icon: "cloud",
-            group: "client",
-            component: "RestPage"
-        },
-        {
-            id: "legacy",
-            name: "推送",
-            icon: "satellite-dish",
-            group: "client",
-            component: "LegacyPage"
-        }
-    ]
+    ShadcnSonner {
+        id: sonner
+        parent: shell.contentItem
+        anchors.fill: parent
+        showTrigger: false
+        z: 1000
+        defaultDuration: 3500
+    }
 
     Connections {
         target: ClientBackend
         function onToastRequested(message, level) {
-            var t = level === "error" ? "danger" : (level === "success" ? "success" : "info")
-            toast.showMessage(message, t)
+            sonner.toast(message)
         }
-    }
-
-    SenseToast {
-        id: toast
-        anchors.horizontalCenter: parent.horizontalCenter
-        anchors.bottom: parent.bottom
-        anchors.bottomMargin: shell._safe.bottom + SenseSpacing.spacer6
     }
 }

@@ -1,0 +1,4 @@
+[submodule "third_party/SenseDesign"]
+	path = third_party/SenseDesign
+	url = https://github.com/qfotcom/SenseDesign.git
+	branch = feature/shadcn-qml-refactor

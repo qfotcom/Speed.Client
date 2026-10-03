@@ -1,116 +1,166 @@
 import QtQuick
-import QtQuick.Controls
 import QtQuick.Layouts
-import SenseDesign 1.0
+import SenseAppShell 1.0
+import SenseDesign
 import "../components"
 
-ClientPageLayout {
-    title: "连接"
-    description: "配置 Speed.Server 地址。模拟器访问本机 PC 请用 10.0.2.2；真机用电脑局域网 IP。服务端需监听 0.0.0.0。"
+Item {
+    id: root
+    property string pageId: "connection"
 
-    SenseCard {
-        Layout.fillWidth: true
-        title: "服务器"
-        iconName: "server"
+    width: parent && parent.width > 0 ? parent.width : 360
+    implicitWidth: width
+    implicitHeight: page.implicitHeight
 
-        body: Component {
+    ClientMobilePage {
+        id: page
+        width: parent.width
+        title: qsTr("服务器连接")
+        subtitle: qsTr("模拟器访问本机请用 10.0.2.2；真机填写 PC 局域网 IP。服务端需监听 0.0.0.0。")
+
+        ShadcnCard {
+            Layout.fillWidth: true
+            contentMargin: ShadcnAppPlatform.isMobile ? 14 : 20
+
             ColumnLayout {
-                width: parent ? parent.width : 360
-                spacing: SenseSpacing.spacer3
+                width: parent.width
+                spacing: 12
 
-                SenseInput {
+                RowLayout {
                     Layout.fillWidth: true
-                    label: "主机"
-                    placeholder: "10.0.2.2 或 192.168.x.x"
-                    text: ClientBackend.host
-                    onInputFocusChanged: function (focused) {
-                        if (!focused)
-                            ClientBackend.host = text
+                    spacing: 8
+
+                    ShadcnIcon { name: "server"; size: 18 }
+                    ShadcnLabel {
+                        Layout.fillWidth: true
+                        text: qsTr("端点配置")
+                        font.weight: ShadcnTypography.fontWeightSemibold
                     }
-                    onAccepted: ClientBackend.host = text
+                    ClientStatusBadge {
+                        text: ClientBackend.legacyBusy && ClientBackend.legacyConnected
+                              ? qsTr("通信中")
+                              : (ClientBackend.legacyConnected ? qsTr("Legacy 在线") : qsTr("Legacy 离线"))
+                        tone: ClientBackend.legacyBusy && ClientBackend.legacyConnected
+                              ? "pending"
+                              : (ClientBackend.legacyConnected ? "success" : "danger")
+                    }
+                }
+
+                ShadcnSeparator {}
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 6
+                    ShadcnLabel { text: qsTr("主机") }
+                    ShadcnInput {
+                        Layout.fillWidth: true
+                        placeholderText: qsTr("10.0.2.2 或 192.168.x.x")
+                        text: ClientBackend.host
+                        onEditingFinished: ClientBackend.host = text
+                    }
+                    ShadcnLabel {
+                        Layout.fillWidth: true
+                        wrapMode: Text.WordWrap
+                        font.pixelSize: ShadcnTypography.fontSizeXs
+                        color: ShadcnTheme.c("muted-foreground")
+                        text: qsTr("保存后 REST 与 Legacy 共用此地址")
+                    }
                 }
 
                 RowLayout {
                     Layout.fillWidth: true
-                    spacing: SenseSpacing.spacer3
+                    spacing: ShadcnAppPlatform.isMobile ? 10 : 14
 
-                    SenseInput {
+                    ColumnLayout {
                         Layout.fillWidth: true
-                        label: "Legacy 端口"
-                        text: String(ClientBackend.legacyPort)
-                        textField.inputMethodHints: Qt.ImhDigitsOnly
-                        onInputFocusChanged: function (focused) {
-                            if (!focused)
-                                ClientBackend.legacyPort = parseInt(text) || 9001
+                        spacing: 6
+                        ShadcnLabel { text: qsTr("Legacy 端口") }
+                        ShadcnInput {
+                            Layout.fillWidth: true
+                            text: String(ClientBackend.legacyPort)
+                            inputMethodHints: Qt.ImhDigitsOnly
+                            onEditingFinished: ClientBackend.legacyPort = parseInt(text) || 9001
                         }
-                        onAccepted: ClientBackend.legacyPort = parseInt(text) || 9001
                     }
-                    SenseInput {
+
+                    ColumnLayout {
                         Layout.fillWidth: true
-                        label: "REST 端口"
-                        text: String(ClientBackend.restPort)
-                        textField.inputMethodHints: Qt.ImhDigitsOnly
-                        onInputFocusChanged: function (focused) {
-                            if (!focused)
-                                ClientBackend.restPort = parseInt(text) || 8080
+                        spacing: 6
+                        ShadcnLabel { text: qsTr("REST 端口") }
+                        ShadcnInput {
+                            Layout.fillWidth: true
+                            text: String(ClientBackend.restPort)
+                            inputMethodHints: Qt.ImhDigitsOnly
+                            onEditingFinished: ClientBackend.restPort = parseInt(text) || 8080
                         }
-                        onAccepted: ClientBackend.restPort = parseInt(text) || 8080
                     }
                 }
 
-                SenseInput {
+                ColumnLayout {
                     Layout.fillWidth: true
-                    label: "Echo 文本"
-                    text: ClientBackend.echoText
-                    onInputFocusChanged: function (focused) {
-                        if (!focused)
-                            ClientBackend.echoText = text
-                    }
-                    onAccepted: ClientBackend.echoText = text
-                }
-
-                SenseInput {
-                    Layout.fillWidth: true
-                    label: "订阅 Topic"
-                    text: ClientBackend.subscribeTopic
-                    onInputFocusChanged: function (focused) {
-                        if (!focused)
-                            ClientBackend.subscribeTopic = text
-                    }
-                    onAccepted: ClientBackend.subscribeTopic = text
-                }
-
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: SenseSpacing.spacer3
-
-                    SenseButton {
-                        text: "保存配置"
-                        variant: "primary"
-                        iconLeft: "floppy-disk"
+                    spacing: 6
+                    ShadcnLabel { text: qsTr("Echo 文本") }
+                    ShadcnInput {
                         Layout.fillWidth: true
+                        placeholderText: qsTr("REST / Legacy echo 默认内容")
+                        text: ClientBackend.echoText
+                        onEditingFinished: ClientBackend.echoText = text
+                    }
+                }
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 6
+                    ShadcnLabel { text: qsTr("订阅 Topic") }
+                    ShadcnInput {
+                        Layout.fillWidth: true
+                        placeholderText: qsTr("例如 quote.test")
+                        text: ClientBackend.subscribeTopic
+                        onEditingFinished: ClientBackend.subscribeTopic = text
+                    }
+                }
+
+                GridLayout {
+                    Layout.fillWidth: true
+                    columns: ShadcnAppPlatform.isMobile ? 1 : 2
+                    columnSpacing: 10
+                    rowSpacing: 10
+
+                    ShadcnButton {
+                        Layout.fillWidth: true
+                        text: qsTr("保存配置")
+                        iconName: "save"
                         onClicked: ClientBackend.saveSettings()
                     }
-                    SenseButton {
-                        text: ClientBackend.legacyConnected ? "断开 Legacy" : "连接 Legacy"
-                        variant: ClientBackend.legacyConnected ? "outline" : "secondary"
-                        iconLeft: ClientBackend.legacyConnected ? "plug-circle-xmark" : "plug-circle-check"
+
+                    ShadcnButton {
                         Layout.fillWidth: true
+                        text: ClientBackend.legacyConnected ? qsTr("断开 Legacy") : qsTr("连接 Legacy")
+                        variant: ClientBackend.legacyConnected ? "outline" : "default"
+                        iconName: ClientBackend.legacyConnected ? "unplug" : "plug"
                         onClicked: ClientBackend.legacyConnected
                                      ? ClientBackend.disconnectLegacy()
                                      : ClientBackend.connectLegacy()
                     }
                 }
 
-                SenseAlert {
+                ClientStatusAlert {
                     Layout.fillWidth: true
-                    type: ClientBackend.legacyConnected ? "success" : "info"
-                    title: ClientBackend.legacyConnected ? "Legacy 已连接" : "Legacy 未连接"
-                    description: "REST 为无状态 HTTP，无需单独连接。"
+                    tone: ClientBackend.legacyConnected ? "success" : "danger"
+                    title: ClientBackend.legacyConnected
+                           ? qsTr("Legacy 已连接")
+                           : qsTr("Legacy 未连接")
+                    description: ClientBackend.legacyConnected
+                                 ? qsTr("REST 为无状态 HTTP，无需单独「连接」。")
+                                 : qsTr("请检查主机、端口与服务端是否监听 0.0.0.0；超时或拒绝连接会显示为离线。")
                 }
             }
         }
-    }
 
-    EventLogPanel { model: ClientBackend.eventLog }
+        EventLogPanel {
+            Layout.fillWidth: true
+            model: ClientBackend.eventLog
+            startExpanded: true
+        }
+    }
 }

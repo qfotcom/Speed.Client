@@ -1,22 +1,19 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import SenseDesign 1.0
+import SenseAppShell 1.0
+import SenseDesign
 
-SenseCard {
+ShadcnCard {
     id: root
 
     property var model: []
+    property bool startExpanded: true
 
-    Layout.fillWidth: true
-    // 勿设 preferredHeight：小于卡片真实高度时会在页面底部被裁切
+    width: parent ? parent.width : implicitWidth
+    contentMargin: ShadcnAppPlatform.isMobile ? 14 : 20
 
-    title: "事件日志"
-    subtitle: model.length > 0 ? (model.length + " 条记录 · 最新在上") : "暂无记录"
-    iconName: "list-ul"
-
-    // 列表可视区：移动端约 4–6 条（含 badge/换行），桌面略低
-    readonly property int _logViewportHeight: SensePlatform.isMobile ? 320 : 260
+    readonly property int _logViewportHeight: ShadcnAppPlatform.isMobile ? 280 : 240
 
     function logKind(line) {
         if (!line)
@@ -42,50 +39,58 @@ SenseCard {
         }
     }
 
-    function logBadgeColor(kind) {
+    function logBadgeTone(kind) {
         switch (kind) {
         case "push": return "success"
         case "error": return "danger"
-        case "rest": return "info"
-        case "legacy": return "primary"
-        default: return "secondary"
+        default: return "neutral"
         }
     }
 
-    function logAccentColor(kind) {
-        var theme = SenseTheme.currentTheme
+    function logAccent(kind) {
         switch (kind) {
-        case "push": return theme.success
-        case "error": return theme.danger
-        case "rest": return theme.info
-        case "legacy": return theme.primary
-        default: return theme.border
+        case "push":
+            return ShadcnTheme.darkMode ? "#4ade80" : "#15803d"
+        case "error": return ShadcnTheme.c("destructive")
+        case "rest": return ShadcnTheme.c("chart-2")
+        case "legacy": return ShadcnTheme.c("chart-4")
+        default: return ShadcnTheme.c("border")
         }
     }
 
-    body: Component {
+    ShadcnCollapsible {
+        width: parent.width
+        title: qsTr("事件日志")
+        summary: model.length > 0
+                 ? qsTr("%1 条 · 最新在上").arg(model.length)
+                 : qsTr("REST / Legacy / PUSH 操作记录")
+        expanded: root.startExpanded
+
         ColumnLayout {
-            width: parent ? parent.width : 360
-            spacing: SenseSpacing.spacer3
+            width: parent.width
+            spacing: 10
 
             RowLayout {
                 Layout.fillWidth: true
-                spacing: SenseSpacing.spacer2
+                spacing: 8
 
-                SenseBadge {
+                ShadcnBadge {
                     text: model.length > 0 ? String(model.length) : "0"
-                    color: model.length > 0 ? "primary" : "secondary"
-                    size: "sm"
+                    variant: model.length > 0 ? "default" : "secondary"
                 }
-                SenseText {
+
+                ShadcnLabel {
                     Layout.fillWidth: true
-                    text: model.length > 0 ? "滚动查看完整内容" : "操作后会在此显示 REST / Legacy / PUSH 日志"
-                    size: "xs"
-                    textColor: SenseTheme.currentTheme.textSecondary
-                    autoWrap: true
+                    wrapMode: Text.WordWrap
+                    font.pixelSize: ShadcnTypography.fontSizeXs
+                    color: ShadcnTheme.c("muted-foreground")
+                    text: model.length > 0
+                          ? qsTr("在列表内滑动查看")
+                          : qsTr("执行请求或连接 Legacy 后会出现日志")
                 }
-                SenseButton {
-                    text: "清空"
+
+                ShadcnButton {
+                    text: qsTr("清空")
                     variant: "outline"
                     size: "sm"
                     enabled: model.length > 0
@@ -96,92 +101,87 @@ SenseCard {
             Rectangle {
                 Layout.fillWidth: true
                 Layout.preferredHeight: root._logViewportHeight
-                radius: SenseSpacing.borderRadius
-                color: SenseTheme.withOpacity(SenseTheme.currentTheme.textPrimary, 0.02)
+                radius: ShadcnTheme.radiusMd
+                color: ShadcnTheme.c("muted")
+                opacity: 0.35
+                border.color: ShadcnTheme.c("border")
                 border.width: 1
-                border.color: SenseTheme.withOpacity(SenseTheme.currentTheme.border, 0.55)
                 clip: true
 
                 Item {
                     anchors.fill: parent
-                    anchors.margins: SenseSpacing.spacer2
+                    anchors.margins: 8
 
                     ListView {
                         id: logView
                         anchors.fill: parent
                         model: root.model
-                        spacing: SenseSpacing.spacer2
+                        spacing: 8
                         clip: true
                         boundsBehavior: Flickable.StopAtBounds
-                        ScrollBar.vertical: ScrollBar {
-                            policy: ScrollBar.AsNeeded
-                        }
+                        ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
 
                         onCountChanged: Qt.callLater(function () { positionViewAtBeginning() })
 
                         delegate: Rectangle {
-                        id: row
-                        width: logView.width
-                        radius: SenseSpacing.borderRadiusSm
-                        color: SenseTheme.withOpacity(SenseTheme.currentTheme.bgSurface, 0.85)
-                        border.width: 1
-                        border.color: SenseTheme.withOpacity(SenseTheme.currentTheme.border, 0.35)
+                            width: logView.width
+                            radius: ShadcnTheme.radiusSm
+                            color: ShadcnTheme.c("card")
+                            border.width: 1
+                            border.color: ShadcnTheme.c("border")
+                            implicitHeight: rowLayout.implicitHeight + 16
 
-                        readonly property string line: modelData
-                        readonly property string kind: root.logKind(line)
+                            readonly property string line: modelData
+                            readonly property string kind: root.logKind(line)
 
-                        implicitHeight: rowLayout.implicitHeight + SenseSpacing.spacer2 * 2
-
-                        Rectangle {
-                            width: 3
-                            anchors.left: parent.left
-                            anchors.top: parent.top
-                            anchors.bottom: parent.bottom
-                            anchors.topMargin: SenseSpacing.spacer2
-                            anchors.bottomMargin: SenseSpacing.spacer2
-                            radius: 2
-                            color: root.logAccentColor(kind)
-                        }
-
-                        RowLayout {
-                            id: rowLayout
-                            anchors.left: parent.left
-                            anchors.right: parent.right
-                            anchors.verticalCenter: parent.verticalCenter
-                            anchors.leftMargin: SenseSpacing.spacer2 + 3
-                            anchors.rightMargin: SenseSpacing.spacer2
-                            spacing: SenseSpacing.spacer2
-
-                            SenseBadge {
-                                text: root.logBadge(kind)
-                                color: root.logBadgeColor(kind)
-                                size: "sm"
-                                Layout.alignment: Qt.AlignTop
+                            Rectangle {
+                                width: 3
+                                anchors.left: parent.left
+                                anchors.top: parent.top
+                                anchors.bottom: parent.bottom
+                                anchors.margins: 8
+                                radius: 2
+                                color: root.logAccent(kind)
                             }
 
-                            SenseText {
-                                Layout.fillWidth: true
-                                text: line
-                                size: "xs"
-                                autoWrap: true
-                                textColor: kind === "error"
-                                    ? SenseTheme.currentTheme.danger
-                                    : SenseTheme.currentTheme.textPrimary
-                                font.family: "Consolas, Cascadia Mono, Courier New, monospace"
+                            RowLayout {
+                                id: rowLayout
+                                anchors.fill: parent
+                                anchors.leftMargin: 14
+                                anchors.rightMargin: 10
+                                anchors.topMargin: 8
+                                anchors.bottomMargin: 8
+                                spacing: 8
+
+                                ClientStatusBadge {
+                                    text: root.logBadge(kind)
+                                    tone: root.logBadgeTone(kind)
+                                    Layout.alignment: Qt.AlignTop
+                                }
+
+                                ShadcnLabel {
+                                    Layout.fillWidth: true
+                                    wrapMode: Text.WordWrap
+                                    font.pixelSize: ShadcnTypography.fontSizeXs
+                                    font.family: "Geist Mono, Consolas, monospace"
+                                    color: kind === "error"
+                                           ? ShadcnTheme.c("destructive")
+                                           : ShadcnTheme.c("foreground")
+                                    text: line
+                                }
                             }
                         }
                     }
-                    }
 
-                    SenseText {
+                    ShadcnLabel {
                         anchors.centerIn: parent
                         visible: root.model.length === 0
-                        width: parent.width - SenseSpacing.spacer4
+                        width: parent.width - 24
                         horizontalAlignment: Text.AlignHCenter
-                        text: "暂无日志"
-                        size: "sm"
-                        textColor: SenseTheme.currentTheme.textSecondary
-                        autoWrap: true
+                        wrapMode: Text.WordWrap
+                        color: ShadcnTheme.c("muted-foreground")
+                        font.pixelSize: ShadcnTypography.fontSizeSm
+                        text: qsTr("暂无日志")
                     }
                 }
             }

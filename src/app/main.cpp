@@ -3,28 +3,43 @@
 #include <QCoreApplication>
 #include <QCommandLineParser>
 #include <QFile>
-#include <QTimer>
 #include <QFont>
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
+#include <QQmlComponent>
 #include <QQmlContext>
 #include <QQmlError>
 #include <QQuickStyle>
 #include <QQuickWindow>
 #include <QSGRendererInterface>
-
-#include "SenseAnimations.h"
-#include "SenseIconRegistry.h"
-#include "SenseShadows.h"
-#include "SenseSpacing.h"
-#include "SenseTheme.h"
-#include "SenseTypography.h"
+#include <QTimer>
 
 #if defined(Q_OS_ANDROID)
 #include "AndroidStartupLog.h"
 #include "AndroidSystemUiBridge.h"
 #include <android/log.h>
 #endif
+
+#if defined(Q_OS_WIN)
+#include "WindowMinimizeBridge.h"
+#else
+namespace {
+
+class WindowMinimizeBridgeStub final : public QObject
+{
+    Q_OBJECT
+    Q_PROPERTY(bool windowMaximized READ windowMaximized CONSTANT)
+
+public:
+    using QObject::QObject;
+    bool windowMaximized() const { return false; }
+};
+
+} // namespace
+#endif
+
+extern void qml_register_types_SenseDesign();
+extern void qml_register_types_SenseAppShell();
 
 namespace {
 
@@ -72,7 +87,18 @@ int main(int argc, char *argv[])
     QQuickWindow::setGraphicsApi(QSGRendererInterface::OpenGL);
 #endif
 
-    QQuickStyle::setStyle("Basic");
+    QQuickStyle::setStyle(QStringLiteral("Basic"));
+
+#if defined(Q_OS_WIN)
+    const auto substituteLegacyFonts = []() {
+        const QString target = QStringLiteral("Segoe UI");
+        for (const QString &legacy : {QStringLiteral("MS Sans Serif"),
+                                      QStringLiteral("Microsoft Sans Serif"),
+                                      QStringLiteral("MS Shell Dlg 2")})
+            QFont::insertSubstitution(legacy, target);
+    };
+    substituteLegacyFonts();
+#endif
 
     QGuiApplication app(argc, argv);
     app.setApplicationName(QStringLiteral("SpeedClient"));
@@ -82,12 +108,13 @@ int main(int argc, char *argv[])
 
 #if defined(Q_OS_ANDROID)
     AndroidStartupLog::install(&app);
-#endif
-
-#if defined(Q_OS_ANDROID)
     QFont appFont(app.font());
     appFont.setPointSize(14);
     app.setFont(appFont);
+#endif
+
+#if defined(Q_OS_WIN)
+    substituteLegacyFonts();
 #endif
 
     QCommandLineParser parser;
@@ -97,48 +124,45 @@ int main(int argc, char *argv[])
 
     Q_INIT_RESOURCE(qmake_SpeedClient);
     Q_INIT_RESOURCE(SpeedClient_raw_qml_0);
-
-    Q_INIT_RESOURCE(src);
-    Q_INIT_RESOURCE(icons_svg);
     Q_INIT_RESOURCE(qmake_SenseDesign);
     Q_INIT_RESOURCE(SenseDesign_raw_qml_0);
     Q_INIT_RESOURCE(SenseDesign_raw_res_0);
     Q_INIT_RESOURCE(qmake_SenseAppShell);
     Q_INIT_RESOURCE(SenseAppShell_raw_qml_0);
 
-    SenseIconRegistry *iconRegistry = SenseIconRegistry::instance();
-    iconRegistry->loadFonts();
-    iconRegistry->loadRegistry();
+    QQmlApplicationEngine engine;
+    engine.addImportPath(QStringLiteral("qrc:/"));
+    engine.addImportPath(QStringLiteral("qrc:/qt/qml"));
 
-    qmlRegisterSingletonInstance("SenseDesign", 1, 0, "SenseTheme", SenseTheme::instance());
-    qmlRegisterSingletonInstance("SenseDesign", 1, 0, "SenseTypography", SenseTypography::instance());
-    qmlRegisterSingletonInstance("SenseDesign", 1, 0, "SenseSpacing", SenseSpacing::instance());
-    qmlRegisterSingletonInstance("SenseDesign", 1, 0, "SenseShadows", SenseShadows::instance());
-    qmlRegisterSingletonInstance("SenseDesign", 1, 0, "SenseAnimations", SenseAnimations::instance());
-    qmlRegisterSingletonInstance("SenseDesign", 1, 0, "SenseIconRegistry", iconRegistry);
+    qml_register_types_SenseDesign();
+    qml_register_types_SenseAppShell();
 
     ClientBackend backend;
 #if defined(Q_OS_ANDROID)
     AndroidSystemUiBridge androidSystemUiBridge;
 #endif
 
-    QQmlApplicationEngine engine;
     engine.rootContext()->setContextProperty(QStringLiteral("ClientBackend"), &backend);
 #if defined(Q_OS_ANDROID)
     engine.rootContext()->setContextProperty(QStringLiteral("AndroidSystemUiBridge"),
                                              &androidSystemUiBridge);
 #endif
 
-    engine.addImportPath(QStringLiteral("qrc:/"));
-    engine.addImportPath(QStringLiteral("qrc:/qt/qml"));
+#if defined(Q_OS_WIN)
+    WindowMinimizeBridge windowChromeBridge;
+#else
+    WindowMinimizeBridgeStub windowChromeBridge;
+#endif
+    engine.rootContext()->setContextProperty(QStringLiteral("WindowMinimizeBridge"),
+                                             &windowChromeBridge);
 
     QObject::connect(
         &engine, &QQmlApplicationEngine::warnings, &app,
         [](const QList<QQmlError> &warnings) { logQmlErrors("QML warning:", warnings); });
 
     QObject::connect(
-        &engine, &QQmlApplicationEngine::objectCreationFailed, &app, []() { QCoreApplication::exit(-1); },
-        Qt::QueuedConnection);
+        &engine, &QQmlApplicationEngine::objectCreationFailed, &app,
+        []() { QCoreApplication::exit(-1); }, Qt::QueuedConnection);
 
 #if defined(Q_OS_ANDROID)
     qInfo() << "QML resource Main.qml exists:"
@@ -151,9 +175,21 @@ int main(int argc, char *argv[])
         return -1;
     }
 
+#if defined(Q_OS_WIN)
+    if (auto *window = qobject_cast<QQuickWindow *>(engine.rootObjects().constFirst())) {
+        QTimer::singleShot(0, window, [window, &windowChromeBridge]() {
+            windowChromeBridge.install(window);
+        });
+    }
+#endif
+
 #if defined(Q_OS_ANDROID)
     QTimer::singleShot(0, &androidSystemUiBridge, &AndroidSystemUiBridge::ensureStatusBarVisible);
 #endif
 
     return app.exec();
 }
+
+#if !defined(Q_OS_WIN)
+#include "main.moc"
+#endif
