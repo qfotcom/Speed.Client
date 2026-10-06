@@ -1,6 +1,7 @@
 #include "ClientBackend.h"
 
 #include <QDateTime>
+#include <QTimer>
 
 #include "config/client_settings.hpp"
 #include "legacy/legacy_client.hpp"
@@ -12,21 +13,45 @@ ClientBackend::ClientBackend(QObject *parent)
     , rest_(new speed::client::rest::RestClient(this))
 {
     const speed::client::ClientSettings cfg = speed::client::ClientSettings::load();
-    host_ = cfg.host;
+    legacy_host_ = cfg.legacy_host;
+    rest_host_ = cfg.rest_host;
     legacy_port_ = cfg.legacy_port;
     rest_port_ = cfg.rest_port;
     subscribe_topic_ = cfg.subscribe_topic;
     echo_text_ = cfg.echo_text;
+    auto_connect_on_startup_ = cfg.auto_connect_on_startup;
     applyEndpoints();
 
-    connect(legacy_, &speed::client::legacy::LegacyClient::connectedChanged, this,
-            &ClientBackend::legacyConnectedChanged);
+    reconnect_timer_ = new QTimer(this);
+    reconnect_timer_->setSingleShot(true);
+    reconnect_timer_->setInterval(8000);
+
+    connect(reconnect_timer_, &QTimer::timeout, this, [this]() {
+        if (!auto_connect_on_startup_ || manual_legacy_disconnect_ || legacyConnected()) {
+            return;
+        }
+        runAutoConnect(QStringLiteral("自动重连"));
+    });
+
+    connect(legacy_, &speed::client::legacy::LegacyClient::connectedChanged, this, [this]() {
+        Q_EMIT legacyConnectedChanged();
+        if (legacyConnected()) {
+            reconnect_timer_->stop();
+            return;
+        }
+        if (auto_connect_on_startup_ && !manual_legacy_disconnect_) {
+            scheduleAutoReconnect();
+        }
+    });
     connect(legacy_, &speed::client::legacy::LegacyClient::busyChanged, this,
             &ClientBackend::legacyBusyChanged);
     connect(legacy_, &speed::client::legacy::LegacyClient::errorOccurred, this,
             [this](const QString &msg) {
                 appendLog(QStringLiteral("[Legacy ERR] %1").arg(msg));
                 Q_EMIT toastRequested(msg, QStringLiteral("error"));
+                if (auto_connect_on_startup_ && !manual_legacy_disconnect_ && !legacyConnected()) {
+                    scheduleAutoReconnect();
+                }
             });
     connect(legacy_, &speed::client::legacy::LegacyClient::responseReceived, this,
             [this](const QString &primary, const QString &raw) {
@@ -58,13 +83,31 @@ ClientBackend::ClientBackend(QObject *parent)
                 Q_EMIT lastRestEchoChanged();
                 appendLog(QStringLiteral("[REST echo] %1").arg(last_rest_echo_));
             });
+
+    // QML 就绪后再连（Main.qml 也会调一次 connectOnStartup）
+    QTimer::singleShot(600, this, &ClientBackend::connectOnStartup);
 }
 
 ClientBackend::~ClientBackend() = default;
 
-QString ClientBackend::host() const
+QString ClientBackend::legacyHost() const
 {
-    return host_;
+    return legacy_host_;
+}
+
+QString ClientBackend::restHost() const
+{
+    return rest_host_;
+}
+
+QString ClientBackend::legacyEndpoint() const
+{
+    return QStringLiteral("%1:%2").arg(legacy_host_).arg(legacy_port_);
+}
+
+QString ClientBackend::restEndpoint() const
+{
+    return QStringLiteral("%1:%2").arg(rest_host_).arg(rest_port_);
 }
 
 int ClientBackend::legacyPort() const
@@ -75,6 +118,11 @@ int ClientBackend::legacyPort() const
 int ClientBackend::restPort() const
 {
     return rest_port_;
+}
+
+bool ClientBackend::autoConnectOnStartup() const
+{
+    return auto_connect_on_startup_;
 }
 
 QString ClientBackend::subscribeTopic() const
@@ -127,14 +175,28 @@ QStringList ClientBackend::eventLog() const
     return event_log_;
 }
 
-void ClientBackend::setHost(const QString &value)
+void ClientBackend::setLegacyHost(const QString &value)
 {
-    if (host_ == value) {
+    const QString trimmed = value.trimmed();
+    if (legacy_host_ == trimmed) {
         return;
     }
-    host_ = value;
+    legacy_host_ = trimmed;
     applyEndpoints();
-    Q_EMIT hostChanged();
+    Q_EMIT legacyHostChanged();
+    Q_EMIT legacyEndpointChanged();
+}
+
+void ClientBackend::setRestHost(const QString &value)
+{
+    const QString trimmed = value.trimmed();
+    if (rest_host_ == trimmed) {
+        return;
+    }
+    rest_host_ = trimmed;
+    applyEndpoints();
+    Q_EMIT restHostChanged();
+    Q_EMIT restEndpointChanged();
 }
 
 void ClientBackend::setLegacyPort(int value)
@@ -145,6 +207,7 @@ void ClientBackend::setLegacyPort(int value)
     legacy_port_ = value;
     applyEndpoints();
     Q_EMIT legacyPortChanged();
+    Q_EMIT legacyEndpointChanged();
 }
 
 void ClientBackend::setRestPort(int value)
@@ -155,6 +218,7 @@ void ClientBackend::setRestPort(int value)
     rest_port_ = value;
     applyEndpoints();
     Q_EMIT restPortChanged();
+    Q_EMIT restEndpointChanged();
 }
 
 void ClientBackend::setSubscribeTopic(const QString &value)
@@ -185,14 +249,30 @@ void ClientBackend::setPushPollEnabled(bool value)
     Q_EMIT pushPollEnabledChanged();
 }
 
+void ClientBackend::setAutoConnectOnStartup(bool value)
+{
+    if (auto_connect_on_startup_ == value) {
+        return;
+    }
+    auto_connect_on_startup_ = value;
+    if (!value) {
+        reconnect_timer_->stop();
+    } else if (!legacyConnected() && !manual_legacy_disconnect_) {
+        scheduleAutoReconnect();
+    }
+    Q_EMIT autoConnectOnStartupChanged();
+}
+
 void ClientBackend::saveSettings()
 {
     speed::client::ClientSettings cfg;
-    cfg.host = host_;
+    cfg.legacy_host = legacy_host_;
+    cfg.rest_host = rest_host_;
     cfg.legacy_port = static_cast<quint16>(legacy_port_);
     cfg.rest_port = static_cast<quint16>(rest_port_);
     cfg.subscribe_topic = subscribe_topic_;
     cfg.echo_text = echo_text_;
+    cfg.auto_connect_on_startup = auto_connect_on_startup_;
     cfg.save();
     appendLog(QStringLiteral("[配置] 已保存"));
     Q_EMIT toastRequested(QStringLiteral("配置已保存"), QStringLiteral("success"));
@@ -200,14 +280,17 @@ void ClientBackend::saveSettings()
 
 void ClientBackend::connectLegacy()
 {
+    manual_legacy_disconnect_ = false;
     legacy_->connectToServer();
-    appendLog(QStringLiteral("[Legacy] 连接 %1:%2").arg(host_).arg(legacy_port_));
+    appendLog(QStringLiteral("[Legacy] 连接 %1").arg(legacyEndpoint()));
 }
 
 void ClientBackend::disconnectLegacy()
 {
+    manual_legacy_disconnect_ = true;
+    reconnect_timer_->stop();
     legacy_->disconnectFromServer();
-    appendLog(QStringLiteral("[Legacy] 已断开"));
+    appendLog(QStringLiteral("[Legacy] 已断开（已暂停自动重连，直至再次手动连接）"));
 }
 
 void ClientBackend::legacyPing()
@@ -251,6 +334,52 @@ void ClientBackend::clearLog()
     Q_EMIT eventLogChanged();
 }
 
+void ClientBackend::connectOnStartup()
+{
+    if (!auto_connect_on_startup_) {
+        if (!startup_connect_done_) {
+            startup_connect_done_ = true;
+            appendLog(QStringLiteral("[启动] 自动连接已关闭（可在连接页开启）"));
+        }
+        return;
+    }
+    if (startup_connect_done_) {
+        return;
+    }
+    startup_connect_done_ = true;
+    runAutoConnect(QStringLiteral("启动"));
+}
+
+void ClientBackend::runAutoConnect(const QString &reason)
+{
+    appendLog(QStringLiteral("[%1] Legacy → %2 · REST → %3")
+                  .arg(reason, legacyEndpoint(), restEndpoint()));
+    manual_legacy_disconnect_ = false;
+    legacy_->connectToServer();
+    restHealth();
+}
+
+void ClientBackend::scheduleAutoReconnect()
+{
+    if (!reconnect_timer_->isActive()) {
+        reconnect_timer_->start();
+    }
+}
+
+void ClientBackend::applyCpolarDefaults()
+{
+    const speed::client::ClientSettings cfg = speed::client::ClientSettings::cpolarDefaults();
+    setLegacyHost(cfg.legacy_host);
+    setRestHost(cfg.rest_host);
+    setLegacyPort(cfg.legacy_port);
+    setRestPort(cfg.rest_port);
+    saveSettings();
+    appendLog(QStringLiteral("[配置] 已恢复 cpolar 默认双通道"));
+    Q_EMIT toastRequested(QStringLiteral("已恢复 cpolar 默认（Legacy / REST 独立主机）"),
+                          QStringLiteral("success"));
+    runAutoConnect(QStringLiteral("cpolar 默认"));
+}
+
 void ClientBackend::appendLog(const QString &line)
 {
     const QString stamped =
@@ -264,6 +393,6 @@ void ClientBackend::appendLog(const QString &line)
 
 void ClientBackend::applyEndpoints()
 {
-    legacy_->setEndpoint(host_, static_cast<quint16>(legacy_port_));
-    rest_->setEndpoint(host_, static_cast<quint16>(rest_port_));
+    legacy_->setEndpoint(legacy_host_, static_cast<quint16>(legacy_port_));
+    rest_->setEndpoint(rest_host_, static_cast<quint16>(rest_port_));
 }

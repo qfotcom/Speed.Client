@@ -16,7 +16,7 @@ Item {
         id: page
         width: parent.width
         title: qsTr("Legacy 与推送")
-        subtitle: qsTr("行协议 + 4 字节帧。Workflow 模式下 PUSH 随下一次响应下发；开启轮询 PING 可及时收到推送。")
+        subtitle: qsTr("Legacy 端点 %1 · 行协议 + 4 字节帧。").arg(ClientBackend.legacyEndpoint)
 
         ShadcnCard {
             Layout.fillWidth: true

@@ -17,7 +17,7 @@ Item {
         id: page
         width: parent.width
         title: qsTr("REST 测试")
-        subtitle: qsTr("GET /health 与 GET /api/v1/echo?text=…（Drogon 适配器）。")
+        subtitle: qsTr("请求发往 REST 端点 %1（与 Legacy 主机独立）。").arg(ClientBackend.restEndpoint)
 
         ShadcnCard {
             Layout.fillWidth: true
