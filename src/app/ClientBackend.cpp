@@ -24,23 +24,24 @@ ClientBackend::ClientBackend(QObject *parent)
 
     reconnect_timer_ = new QTimer(this);
     reconnect_timer_->setSingleShot(true);
-    reconnect_timer_->setInterval(8000);
 
     connect(reconnect_timer_, &QTimer::timeout, this, [this]() {
         if (!auto_connect_on_startup_ || manual_legacy_disconnect_ || legacyConnected()) {
             return;
         }
-        runAutoConnect(QStringLiteral("自动重连"));
+        runLegacyReconnect(QStringLiteral("自动重连"));
     });
 
     connect(legacy_, &speed::client::legacy::LegacyClient::connectedChanged, this, [this]() {
         Q_EMIT legacyConnectedChanged();
         if (legacyConnected()) {
             reconnect_timer_->stop();
+            reconnect_backoff_ms_ = kReconnectBackoffInitialMs;
+            restoreLegacySessionAfterConnect();
             return;
         }
         if (auto_connect_on_startup_ && !manual_legacy_disconnect_) {
-            scheduleAutoReconnect();
+            scheduleAutoReconnect(kReconnectDelaySessionLostMs);
         }
     });
     connect(legacy_, &speed::client::legacy::LegacyClient::busyChanged, this,
@@ -50,7 +51,9 @@ ClientBackend::ClientBackend(QObject *parent)
                 appendLog(QStringLiteral("[Legacy ERR] %1").arg(msg));
                 Q_EMIT toastRequested(msg, QStringLiteral("error"));
                 if (auto_connect_on_startup_ && !manual_legacy_disconnect_ && !legacyConnected()) {
-                    scheduleAutoReconnect();
+                    scheduleAutoReconnect(reconnect_backoff_ms_);
+                    reconnect_backoff_ms_ =
+                        qMin(reconnect_backoff_ms_ * 2, kReconnectBackoffMaxMs);
                 }
             });
     connect(legacy_, &speed::client::legacy::LegacyClient::responseReceived, this,
@@ -307,6 +310,7 @@ void ClientBackend::legacyEcho()
 
 void ClientBackend::legacySubscribe()
 {
+    legacy_subscription_active_ = true;
     legacy_->sendLine(QStringLiteral("SUB %1").arg(subscribe_topic_));
     if (push_poll_enabled_) {
         legacy_->setPushPollEnabled(true);
@@ -315,6 +319,7 @@ void ClientBackend::legacySubscribe()
 
 void ClientBackend::legacyUnsubscribe()
 {
+    legacy_subscription_active_ = false;
     legacy_->sendLine(QStringLiteral("UNSUB %1").arg(subscribe_topic_));
 }
 
@@ -359,11 +364,35 @@ void ClientBackend::runAutoConnect(const QString &reason)
     restHealth();
 }
 
-void ClientBackend::scheduleAutoReconnect()
+void ClientBackend::scheduleAutoReconnect(int delayMs)
 {
+    if (!auto_connect_on_startup_ || manual_legacy_disconnect_ || legacyConnected()) {
+        return;
+    }
+    const int delay = delayMs >= 0 ? delayMs : reconnect_backoff_ms_;
+    reconnect_timer_->setInterval(qMax(0, delay));
     if (!reconnect_timer_->isActive()) {
         reconnect_timer_->start();
     }
+}
+
+void ClientBackend::runLegacyReconnect(const QString &reason)
+{
+    appendLog(QStringLiteral("[%1] Legacy → %2").arg(reason, legacyEndpoint()));
+    manual_legacy_disconnect_ = false;
+    legacy_->connectToServer();
+}
+
+void ClientBackend::restoreLegacySessionAfterConnect()
+{
+    if (!legacy_subscription_active_) {
+        return;
+    }
+    legacy_->sendLine(QStringLiteral("SUB %1").arg(subscribe_topic_));
+    if (push_poll_enabled_) {
+        legacy_->setPushPollEnabled(true);
+    }
+    appendLog(QStringLiteral("[Legacy] 重连后恢复订阅 %1").arg(subscribe_topic_));
 }
 
 void ClientBackend::applyCpolarDefaults()

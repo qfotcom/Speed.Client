@@ -36,12 +36,10 @@ Item {
                         font.weight: ShadcnTypography.fontWeightSemibold
                     }
                     ClientStatusBadge {
-                        text: ClientBackend.legacyBusy && ClientBackend.legacyConnected
-                              ? qsTr("通信中")
-                              : (ClientBackend.legacyConnected ? qsTr("已连接") : qsTr("未连接"))
-                        tone: ClientBackend.legacyBusy && ClientBackend.legacyConnected
-                              ? "pending"
-                              : (ClientBackend.legacyConnected ? "success" : "danger")
+                        text: ClientBackend.legacyConnected ? qsTr("已连接") : qsTr("未连接")
+                        tone: ClientBackend.legacyConnected ? "success" : "danger"
+                        reserveActivitySlot: ClientBackend.legacyConnected
+                        activity: ClientBackend.legacyConnected && ClientBackend.legacyBusy
                     }
                 }
 

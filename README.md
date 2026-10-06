@@ -81,7 +81,7 @@ powershell -File tools/android_debug_debug.ps1 -Serial <device>
 | Legacy | `1.tcp.cpolar.cn` | 20771 |
 | REST | `6.tcp.cpolar.cn` | 10513 |
 
-默认 **启动自动连接**（Legacy TCP + REST `/health`），断线约 8 秒重连；可在「连接」页关闭。局域网联调时将两路主机改为同一 PC IP，端口 **9001 / 8080** 后保存。
+默认 **启动自动连接**（Legacy TCP + REST `/health`）。Legacy **断线约 250ms 内重连**；若连不上则指数退避至最多 8s。曾在推送页 **SUB** 过的 Topic 会在重连成功后自动再 SUB（及轮询 PING）；可在「连接」页关闭自动连接。局域网联调时将两路主机改为同一 PC IP，端口 **9001 / 8080** 后保存。
 
 若界面仍显示旧版「单个主机」表单，请 **完整重新编译并安装**（Android 建议先卸载旧 APK 或 bump 安装），确保 `ClientBackend.legacyHost` / `restHost` 与新 QML 一并打进包内。
 

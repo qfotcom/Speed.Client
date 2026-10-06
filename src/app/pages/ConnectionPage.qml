@@ -37,12 +37,10 @@ Item {
                         font.weight: ShadcnTypography.fontWeightSemibold
                     }
                     ClientStatusBadge {
-                        text: ClientBackend.legacyBusy && ClientBackend.legacyConnected
-                              ? qsTr("通信中")
-                              : (ClientBackend.legacyConnected ? qsTr("Legacy 在线") : qsTr("Legacy 离线"))
-                        tone: ClientBackend.legacyBusy && ClientBackend.legacyConnected
-                              ? "pending"
-                              : (ClientBackend.legacyConnected ? "success" : "danger")
+                        text: ClientBackend.legacyConnected ? qsTr("Legacy 在线") : qsTr("Legacy 离线")
+                        tone: ClientBackend.legacyConnected ? "success" : "danger"
+                        reserveActivitySlot: ClientBackend.legacyConnected
+                        activity: ClientBackend.legacyConnected && ClientBackend.legacyBusy
                     }
                 }
 
@@ -150,7 +148,7 @@ Item {
                     ShadcnLabel {
                         Layout.fillWidth: true
                         wrapMode: Text.WordWrap
-                        text: qsTr("启动时自动连接 Legacy，并探活 REST /health；断线后约 8 秒自动重连")
+                        text: qsTr("启动时自动连接 Legacy，并探活 REST /health；Legacy 断线后尽快重连并恢复已订阅 Topic")
                     }
                 }
 

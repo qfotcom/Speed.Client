@@ -107,8 +107,15 @@ Q_SIGNALS:
 private:
     void appendLog(const QString &line);
     void applyEndpoints();
-    void scheduleAutoReconnect();
-    void runAutoConnect(const QString &reason); // Legacy TCP + REST /health
+    /** delayMs < 0 时使用 reconnect_backoff_ms_（连接失败退避） */
+    void scheduleAutoReconnect(int delayMs = -1);
+    void runAutoConnect(const QString &reason); // Legacy TCP + REST /health（启动/手动）
+    void runLegacyReconnect(const QString &reason);
+    void restoreLegacySessionAfterConnect();
+
+    static constexpr int kReconnectDelaySessionLostMs = 250;
+    static constexpr int kReconnectBackoffInitialMs = 500;
+    static constexpr int kReconnectBackoffMaxMs = 8000;
 
     speed::client::legacy::LegacyClient *legacy_{nullptr};
     speed::client::rest::RestClient *rest_{nullptr};
@@ -124,6 +131,9 @@ private:
     QString subscribe_topic_;
     QString echo_text_;
     bool push_poll_enabled_{false};
+    /** 用户曾 SUB 且未 UNSUB 时，重连后自动恢复订阅 */
+    bool legacy_subscription_active_{false};
+    int reconnect_backoff_ms_{kReconnectBackoffInitialMs};
     QString last_rest_health_;
     QString last_rest_echo_;
     QString last_legacy_line_;
