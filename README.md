@@ -13,7 +13,7 @@ Speed.Server 示例客户端（**REST** + **Legacy 订阅推送**），UI 使用
 
 旧版 Tabler `SenseAppWindow` / `Sense*` 组件已移除；外壳为 **`ShadcnAppWindow`**（`SenseAppShell`），页面为 **连接 / REST / 推送** 三页结构不变。
 
-`Main.qml` 已开启 **`keepPagesAlive: true`**：三页切换时各自滚动与编辑状态保留；Legacy 连接状态等由 **`ClientBackend`** 全局共享，各页徽章一致。
+`Main.qml` 已开启 **`keepPagesAlive: true`**：各页切换时滚动与编辑状态保留；Legacy 连接状态等由 **`ClientBackend`** 全局共享。**「状态」页** 用 SenseDesign **`ShadcnChart`** 的 **`lineStyle: "stepLeft"`** 展示 Legacy/REST/订阅等 0/1 时序（约 120 秒窗口）。
 
 ## 初始化 SenseDesign 子模块
 

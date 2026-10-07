@@ -4,10 +4,13 @@ function Invoke-SpeedClientAndroidStartupLog {
     param(
         [ValidateSet("Debug", "Release", "Auto")]
         [string]$Profile = "Auto",
-        [string]$Serial = "192.168.1.3:5555",
+        [string]$Serial = "",
         [string[]]$AppArgs = @(),
         [switch]$NoLaunch,
+        [switch]$NoLogcatClear,
+        [switch]$SkipLogcat,
         [int]$WaitSeconds = 6,
+        [int]$AdbTimeoutSec = 25,
         [string]$AdbPath = "D:/APPLICATIONS/Android/SDK/platform-tools/adb.exe"
     )
 
@@ -17,18 +20,93 @@ function Invoke-SpeedClientAndroidStartupLog {
     }
 
     $script:Adb = $AdbPath
-    $script:Serial = $Serial
+
+    function Resolve-AdbSerial {
+        param([string]$Requested)
+        if (-not [string]::IsNullOrWhiteSpace($Requested)) {
+            $req = $Requested.Trim()
+            if ($req -match ":") {
+                $psi = New-Object System.Diagnostics.ProcessStartInfo
+                $psi.FileName = $script:Adb
+                $psi.Arguments = "connect $req"
+                $psi.RedirectStandardOutput = $true
+                $psi.RedirectStandardError = $true
+                $psi.UseShellExecute = $false
+                $psi.CreateNoWindow = $true
+                $p = [System.Diagnostics.Process]::Start($psi)
+                if (-not $p.WaitForExit(8000)) {
+                    try { $p.Kill($true) } catch { }
+                    Write-Warning "adb connect $req timed out (8s); continuing with -s $req"
+                }
+            }
+            return $req
+        }
+        $lines = & $script:Adb devices 2>&1 | Out-String
+        foreach ($line in ($lines -split "`r?`n")) {
+            if ($line -match "^(?<id>\S+)\s+device\s*$") {
+                return $Matches["id"]
+            }
+        }
+        return ""
+    }
+
+    $script:Serial = Resolve-AdbSerial $Serial
+    if ([string]::IsNullOrWhiteSpace($script:Serial)) {
+        Write-Error "No adb device. Pass -Serial <id> (e.g. FY24339119CC or 192.168.x.x:5555)."
+        return
+    }
+    Write-Host "=== adb device: $($script:Serial) ==="
+    if (-not $SkipLogcat -and $script:Serial -match ':') {
+        Write-Host "=== note: wireless adb — auto -SkipLogcat (logcat often hangs). USB: -Serial <usb-id> ==="
+        $SkipLogcat = $true
+    }
     $pkg = "com.speed.client"
     $activity = "org.qtproject.qt.android.bindings.QtActivity"
     $logTag = "SpeedClient"
 
+    function Invoke-AdbHost {
+        param(
+            [Parameter(Mandatory = $true)]
+            [string[]]$AdbArgs,
+            [int]$TimeoutSec = $AdbTimeoutSec
+        )
+        $allArgs = @("-s", $script:Serial) + $AdbArgs
+        $stdoutFile = [System.IO.Path]::GetTempFileName()
+        $stderrFile = [System.IO.Path]::GetTempFileName()
+        try {
+            $proc = Start-Process -FilePath $script:Adb -ArgumentList $allArgs `
+                -RedirectStandardOutput $stdoutFile -RedirectStandardError $stderrFile `
+                -PassThru -NoNewWindow -Wait:$false
+            if (-not $proc.WaitForExit($TimeoutSec * 1000)) {
+                try { $proc.Kill($true) } catch { }
+                Write-Warning "adb timed out (${TimeoutSec}s): adb $($allArgs -join ' ')"
+                return @{ Ok = $false; Output = "" }
+            }
+            $out = (Get-Content -LiteralPath $stdoutFile -Raw -ErrorAction SilentlyContinue)
+            $err = (Get-Content -LiteralPath $stderrFile -Raw -ErrorAction SilentlyContinue)
+            $text = ("$out`n$err").Trim()
+            return @{ Ok = ($proc.ExitCode -eq 0); Output = $text }
+        } finally {
+            Remove-Item -LiteralPath $stdoutFile, $stderrFile -Force -ErrorAction SilentlyContinue
+        }
+    }
+
     function Invoke-AdbShell {
-        param([string]$Command)
-        $prev = $ErrorActionPreference
-        $ErrorActionPreference = "Continue"
-        $out = & $script:Adb -s $script:Serial shell $Command 2>&1
-        $ErrorActionPreference = $prev
-        return ($out | Out-String).Trim()
+        param(
+            [string]$Command,
+            [int]$TimeoutSec = $AdbTimeoutSec
+        )
+        $hit = Invoke-AdbHost -AdbArgs @("shell", $Command) -TimeoutSec $TimeoutSec
+        return $hit.Output
+    }
+
+    function Get-AppPid {
+        $raw = Invoke-AdbShell "pidof $pkg"
+        if ([string]::IsNullOrWhiteSpace($raw)) { return "" }
+        foreach ($tok in ($raw -split '\s+')) {
+            if ($tok -match '^\d+$') { return $tok }
+        }
+        return ""
     }
 
     function Get-FilteredLogcat {
@@ -55,13 +133,13 @@ function Invoke-SpeedClientAndroidStartupLog {
         )
         $prev = $ErrorActionPreference
         $ErrorActionPreference = "Continue"
-        if ($PidFilter) {
-            $raw = & $script:Adb -s $script:Serial logcat -d --pid=$PidFilter 2>&1
+        if ($PidFilter -and $PidFilter -match '^\d+$') {
+            $hit = Invoke-AdbHost -AdbArgs @("logcat", "-d", "-t", "200", "--pid=$PidFilter") -TimeoutSec $AdbTimeoutSec
         } else {
-            $raw = & $script:Adb -s $script:Serial logcat -d 2>&1
+            $hit = Invoke-AdbHost -AdbArgs @("logcat", "-d", "-t", "200") -TimeoutSec $AdbTimeoutSec
         }
         $ErrorActionPreference = $prev
-        $text = ($raw | Out-String)
+        $text = if ($hit.Ok) { $hit.Output } else { "" }
         $regex = ($Patterns | ForEach-Object { [regex]::Escape($_) }) -join "|"
         $lines = $text -split "`r?`n" | Where-Object { $_ -match $regex }
         return ($lines -join "`n").Trim()
@@ -100,7 +178,7 @@ function Invoke-SpeedClientAndroidStartupLog {
     }
 
     function Read-LogcatStartupLog {
-        $appPid = (Invoke-AdbShell "pidof $pkg").Split(" ")[0]
+        $appPid = Get-AppPid
         $lc = Get-FilteredLogcat -PidFilter $appPid -Patterns @(
             "SpeedClient", "speed_startup", "libSpeedClient", "AndroidStartupLog"
         )
@@ -115,8 +193,6 @@ function Invoke-SpeedClientAndroidStartupLog {
         }
         return $null
     }
-
-    & $script:Adb connect $script:Serial | Out-Null
 
     $profileLabel = switch ($Profile) {
         "Debug" { "Debug APK (run-as)" }
@@ -147,18 +223,27 @@ function Invoke-SpeedClientAndroidStartupLog {
     }
 
     if (-not $NoLaunch) {
-        Write-Host "=== clear logcat buffer (host) ==="
-        $ErrorActionPreference = "Continue"
-        & $script:Adb -s $script:Serial logcat -c 2>&1 | Out-Null
-        $ErrorActionPreference = "Stop"
+        if (-not $NoLogcatClear) {
+            Write-Host "=== clear logcat buffer (device, 8s timeout) ==="
+            $clearHit = Invoke-AdbHost -AdbArgs @("shell", "logcat", "-c") -TimeoutSec 8
+            if (-not $clearHit.Ok) {
+                Write-Warning "logcat -c skipped or failed (common on wireless adb). Use -NoLogcatClear to skip."
+            }
+        } else {
+            Write-Host "=== clear logcat buffer (skipped, -NoLogcatClear) ==="
+        }
 
         Write-Host "=== start $pkg ($($AppArgs -join ' ')) ==="
         if ($AppArgs.Count -gt 0) {
             $argStr = ($AppArgs | ForEach-Object { $_ -replace '"', '\"' }) -join ' '
-            & $script:Adb -s $script:Serial shell am start -n "$pkg/$activity" --es "applicationArguments" $argStr 2>&1
+            $startHit = Invoke-AdbHost -AdbArgs @(
+                "shell", "am start -n $pkg/$activity --es applicationArguments $argStr"
+            )
+            if ($startHit.Output) { Write-Host $startHit.Output }
             Write-Host "Qt Creator run args if needed: $($AppArgs -join ' ')"
         } else {
-            & $script:Adb -s $script:Serial shell am start -n "$pkg/$activity" 2>&1
+            $startHit = Invoke-AdbHost -AdbArgs @("shell", "am start -n $pkg/$activity")
+            if ($startHit.Output) { Write-Host $startHit.Output }
         }
         Start-Sleep -Seconds $WaitSeconds
     }
@@ -190,13 +275,15 @@ function Invoke-SpeedClientAndroidStartupLog {
         }
     }
 
-    if (-not $logText) {
+    if (-not $logText -and -not $SkipLogcat) {
         Write-Host "=== speed_startup.log (host logcat) ==="
         $hit = Read-LogcatStartupLog
         if ($hit) {
             $logText = $hit.Text
             $source = $hit.Source
         }
+    } elseif ($SkipLogcat) {
+        Write-Host "=== host logcat (skipped, -SkipLogcat) ==="
     }
 
     if ($logText) {
@@ -210,28 +297,32 @@ function Invoke-SpeedClientAndroidStartupLog {
         } else {
             Write-Warning "No startup log from run-as, mirror, or logcat."
         }
-        Write-Host "Check app runs: adb -s $Serial shell pidof $pkg"
+        Write-Host "Check app runs: adb -s $($script:Serial) shell pidof $pkg"
     }
 
     Write-Host ""
     Write-Host "=== crash / error logcat (filtered) ==="
-    $appPid = (Invoke-AdbShell "pidof $pkg").Split(" ")[0]
-    $crashLog = Get-FilteredLogcat -PidFilter $appPid
-    if ([string]::IsNullOrWhiteSpace($crashLog)) {
-        $crashLog = Get-FilteredLogcat
-    }
-    if ($crashLog) {
-        Write-Host $crashLog
+    if ($SkipLogcat) {
+        Write-Host "(skipped; wireless adb logcat often hangs — omit -SkipLogcat on USB)"
     } else {
-        Write-Host "(no matching logcat lines; try: adb -s $Serial logcat -d)"
+        $appPid = Get-AppPid
+        $crashLog = Get-FilteredLogcat -PidFilter $appPid
+        if ([string]::IsNullOrWhiteSpace($crashLog)) {
+            $crashLog = Get-FilteredLogcat
+        }
+        if ($crashLog) {
+            Write-Host $crashLog
+        } else {
+            Write-Host "(no matching logcat lines; try: adb -s $($script:Serial) logcat -d -t 200)"
+        }
     }
 
     Write-Host ""
     if ($Profile -ne "Release") {
-        Write-Host "Debug:   adb -s $Serial shell run-as $pkg cat files/speed_startup.log"
+        Write-Host "Debug:   adb -s $($script:Serial) shell run-as $pkg cat files/speed_startup.log"
     }
     if ($Profile -ne "Debug") {
-        Write-Host "Release: adb -s $Serial shell cat /storage/emulated/0/Android/data/com.speed.client/files/Download/SpeedClient/speed_startup.log"
+        Write-Host "Release: adb -s $($script:Serial) shell cat /storage/emulated/0/Android/data/com.speed.client/files/Download/SpeedClient/speed_startup.log"
     }
-    Write-Host "Logcat:  adb -s $Serial logcat -d | findstr $logTag"
+    Write-Host "Logcat:  adb -s $($script:Serial) logcat -d -t 200 | findstr $logTag"
 }

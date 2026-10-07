@@ -5,6 +5,13 @@ var navGroups = { "client": "SpeedClient" };
 
 var pages = [
     {
+        id: "status",
+        name: "状态",
+        group: "client",
+        icon: "activity",
+        component: "StatusPage.qml"
+    },
+    {
         id: "connection",
         name: "连接",
         group: "client",

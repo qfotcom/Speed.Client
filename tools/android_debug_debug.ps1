@@ -1,6 +1,6 @@
 # SpeedClient — Debug APK: pull files/speed_startup.log via run-as (Qt Creator Debug kit).
 param(
-    [string]$Serial = "192.168.1.3:5555",
+    [string]$Serial = "",
     [string[]]$AppArgs = @(),
     [switch]$NoLaunch,
     [int]$WaitSeconds = 6,

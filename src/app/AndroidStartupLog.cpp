@@ -7,6 +7,7 @@
 #include <QMutexLocker>
 #include <QStandardPaths>
 #include <QTextStream>
+#include <QTimeZone>
 
 #if defined(Q_OS_ANDROID)
 #include <android/log.h>
@@ -36,6 +37,21 @@ void startupMessageHandler(QtMsgType type, const QMessageLogContext &context, co
                                  .arg(context.category ? context.category : "default", msg));
 }
 #endif
+
+QString formatBeijingLogStamp()
+{
+    static const QTimeZone beijing(QByteArray("Asia/Shanghai"));
+    const QDateTime now = QDateTime::currentDateTime(beijing);
+    const int offsetSec = now.offsetFromUtc();
+    const int hours = offsetSec / 3600;
+    const int mins = qAbs((offsetSec / 60) % 60);
+    const QChar sign = offsetSec >= 0 ? QLatin1Char('+') : QLatin1Char('-');
+    const QString offset = QStringLiteral("%1%2:%3")
+                               .arg(sign)
+                               .arg(qAbs(hours), 2, 10, QLatin1Char('0'))
+                               .arg(mins, 2, 10, QLatin1Char('0'));
+    return now.toString(QStringLiteral("yyyy-MM-dd HH:mm:ss.zzz")) + QLatin1Char(' ') + offset;
+}
 
 } // namespace
 
@@ -92,8 +108,7 @@ void AndroidStartupLog::install(QGuiApplication *app)
 
 void AndroidStartupLog::write(const QString &line)
 {
-    const QString stamped = QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs) + QLatin1Char(' ')
-                            + line;
+    const QString stamped = formatBeijingLogStamp() + QLatin1Char(' ') + line;
     appendLine(stamped);
 }
 

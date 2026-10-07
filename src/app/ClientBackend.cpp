@@ -1,11 +1,81 @@
 #include "ClientBackend.h"
 
 #include <QDateTime>
+#include <QRegularExpression>
 #include <QTimer>
+#include <QVariantMap>
 
 #include "config/client_settings.hpp"
 #include "legacy/legacy_client.hpp"
 #include "rest/rest_client.hpp"
+
+#include <QSet>
+
+#include <algorithm>
+
+namespace {
+
+QString shortTimeLabel(const QString &hhmmss)
+{
+    if (hhmmss.size() >= 5) {
+        return hhmmss.left(5);
+    }
+    return hhmmss;
+}
+
+bool channelChanged(const QVector<double> &values, int index)
+{
+    if (index <= 0 || index >= values.size()) {
+        return false;
+    }
+    return values.at(index) != values.at(index - 1);
+}
+
+QList<int> buildPlotIndices(int count, int maxPoints, const QVector<QVector<double> > &channels)
+{
+    if (count <= 0) {
+        return {};
+    }
+    if (count <= maxPoints) {
+        QList<int> all;
+        all.reserve(count);
+        for (int i = 0; i < count; ++i) {
+            all.append(i);
+        }
+        return all;
+    }
+
+    QSet<int> keep;
+    keep.insert(0);
+    keep.insert(count - 1);
+    for (int i = 1; i < count; ++i) {
+        for (const QVector<double> &channel : channels) {
+            if (channelChanged(channel, i)) {
+                keep.insert(i);
+                keep.insert(i - 1);
+                break;
+            }
+        }
+    }
+
+    QList<int> indices = keep.values();
+    std::sort(indices.begin(), indices.end());
+
+    if (indices.size() > maxPoints) {
+        QList<int> thinned;
+        thinned.reserve(maxPoints);
+        const int last = indices.size() - 1;
+        for (int k = 0; k < maxPoints; ++k) {
+            const int pick = (k * last) / (maxPoints - 1);
+            thinned.append(indices.at(pick));
+        }
+        indices = thinned;
+    }
+
+    return indices;
+}
+
+} // namespace
 
 ClientBackend::ClientBackend(QObject *parent)
     : QObject(parent)
@@ -34,6 +104,7 @@ ClientBackend::ClientBackend(QObject *parent)
 
     connect(legacy_, &speed::client::legacy::LegacyClient::connectedChanged, this, [this]() {
         Q_EMIT legacyConnectedChanged();
+        sampleStatusPoint();
         if (legacyConnected()) {
             reconnect_timer_->stop();
             reconnect_backoff_ms_ = kReconnectBackoffInitialMs;
@@ -78,6 +149,7 @@ ClientBackend::ClientBackend(QObject *parent)
             [this](const QString &body, int status) {
                 last_rest_health_ = QStringLiteral("HTTP %1: %2").arg(status).arg(body);
                 Q_EMIT lastRestHealthChanged();
+                sampleStatusPoint();
                 appendLog(QStringLiteral("[REST /health] %1").arg(last_rest_health_));
             });
     connect(rest_, &speed::client::rest::RestClient::echoReceived, this,
@@ -86,6 +158,12 @@ ClientBackend::ClientBackend(QObject *parent)
                 Q_EMIT lastRestEchoChanged();
                 appendLog(QStringLiteral("[REST echo] %1").arg(last_rest_echo_));
             });
+
+    status_sample_timer_ = new QTimer(this);
+    status_sample_timer_->setInterval(kStatusSampleIntervalMs);
+    connect(status_sample_timer_, &QTimer::timeout, this, &ClientBackend::sampleStatusPoint);
+    status_sample_timer_->start();
+    sampleStatusPoint();
 
     // QML 就绪后再连（Main.qml 也会调一次 connectOnStartup）
     QTimer::singleShot(600, this, &ClientBackend::connectOnStartup);
@@ -156,6 +234,11 @@ bool ClientBackend::restBusy() const
 bool ClientBackend::pushPollEnabled() const
 {
     return push_poll_enabled_;
+}
+
+bool ClientBackend::legacySubscriptionActive() const
+{
+    return legacy_subscription_active_;
 }
 
 QString ClientBackend::lastRestHealth() const
@@ -250,6 +333,7 @@ void ClientBackend::setPushPollEnabled(bool value)
     push_poll_enabled_ = value;
     legacy_->setPushPollEnabled(value);
     Q_EMIT pushPollEnabledChanged();
+    sampleStatusPoint();
 }
 
 void ClientBackend::setAutoConnectOnStartup(bool value)
@@ -311,6 +395,8 @@ void ClientBackend::legacyEcho()
 void ClientBackend::legacySubscribe()
 {
     legacy_subscription_active_ = true;
+    Q_EMIT legacySubscriptionActiveChanged();
+    sampleStatusPoint();
     legacy_->sendLine(QStringLiteral("SUB %1").arg(subscribe_topic_));
     if (push_poll_enabled_) {
         legacy_->setPushPollEnabled(true);
@@ -320,6 +406,8 @@ void ClientBackend::legacySubscribe()
 void ClientBackend::legacyUnsubscribe()
 {
     legacy_subscription_active_ = false;
+    Q_EMIT legacySubscriptionActiveChanged();
+    sampleStatusPoint();
     legacy_->sendLine(QStringLiteral("UNSUB %1").arg(subscribe_topic_));
 }
 
@@ -424,4 +512,159 @@ void ClientBackend::applyEndpoints()
 {
     legacy_->setEndpoint(legacy_host_, static_cast<quint16>(legacy_port_));
     rest_->setEndpoint(rest_host_, static_cast<quint16>(rest_port_));
+}
+
+QStringList ClientBackend::statusChartCategories() const
+{
+    const int n = plot_time_labels_.size();
+    QStringList out;
+    if (n <= 0) {
+        return out;
+    }
+    out.reserve(n);
+    const int labelSlots = qMax(2, kStatusAxisLabelCount);
+    const int stride = qMax(1, (n - 1) / (labelSlots - 1));
+    for (int i = 0; i < n; ++i) {
+        if (i == 0 || i == n - 1 || (i % stride) == 0) {
+            out.append(shortTimeLabel(plot_time_labels_.at(i)));
+        } else {
+            out.append(QStringLiteral("\u2009"));
+        }
+    }
+    return out;
+}
+
+QVariantList ClientBackend::statusChartSeries() const
+{
+    return status_chart_series_;
+}
+
+int ClientBackend::statusHistorySeconds() const
+{
+    return (kStatusHistoryMax * kStatusSampleIntervalMs) / 1000;
+}
+
+void ClientBackend::clearStatusHistory()
+{
+    status_time_labels_.clear();
+    legacy_conn_history_.clear();
+    legacy_busy_history_.clear();
+    rest_ok_history_.clear();
+    push_poll_history_.clear();
+    subscription_history_.clear();
+    plot_time_labels_.clear();
+    plot_legacy_conn_.clear();
+    plot_legacy_busy_.clear();
+    plot_rest_ok_.clear();
+    plot_push_poll_.clear();
+    plot_subscription_.clear();
+    rebuildStatusChartSeries();
+    Q_EMIT statusChartChanged();
+    sampleStatusPoint();
+}
+
+bool ClientBackend::restHealthOk() const
+{
+    static const QRegularExpression re(QStringLiteral("^HTTP\\s+(\\d+)"));
+    const QRegularExpressionMatch match = re.match(last_rest_health_);
+    if (!match.hasMatch()) {
+        return false;
+    }
+    const int code = match.captured(1).toInt();
+    return code >= 200 && code < 300;
+}
+
+void ClientBackend::sampleStatusPoint()
+{
+    const QString label = QDateTime::currentDateTime().toString(QStringLiteral("HH:mm:ss"));
+    status_time_labels_.append(label);
+    legacy_conn_history_.append(legacyConnected() ? 1.0 : 0.0);
+    legacy_busy_history_.append(legacyConnected() && legacyBusy() ? 1.0 : 0.0);
+    rest_ok_history_.append(restHealthOk() ? 1.0 : 0.0);
+    push_poll_history_.append(push_poll_enabled_ ? 1.0 : 0.0);
+    subscription_history_.append(legacy_subscription_active_ ? 1.0 : 0.0);
+
+    while (status_time_labels_.size() > kStatusHistoryMax) {
+        status_time_labels_.removeFirst();
+        legacy_conn_history_.removeFirst();
+        legacy_busy_history_.removeFirst();
+        rest_ok_history_.removeFirst();
+        push_poll_history_.removeFirst();
+        subscription_history_.removeFirst();
+    }
+
+    rebuildStatusChartSeries();
+    Q_EMIT statusChartChanged();
+}
+
+void ClientBackend::rebuildStatusChartSeries()
+{
+    const int count = status_time_labels_.size();
+    const QVector<QVector<double> > channels = {
+        legacy_conn_history_,
+        legacy_busy_history_,
+        rest_ok_history_,
+        subscription_history_,
+        push_poll_history_,
+    };
+    const QList<int> pick = buildPlotIndices(count, kStatusPlotMaxPoints, channels);
+
+    plot_time_labels_.clear();
+    plot_legacy_conn_.clear();
+    plot_legacy_busy_.clear();
+    plot_rest_ok_.clear();
+    plot_push_poll_.clear();
+    plot_subscription_.clear();
+    plot_time_labels_.reserve(pick.size());
+    plot_legacy_conn_.reserve(pick.size());
+    plot_legacy_busy_.reserve(pick.size());
+    plot_rest_ok_.reserve(pick.size());
+    plot_push_poll_.reserve(pick.size());
+    plot_subscription_.reserve(pick.size());
+
+    for (int index : pick) {
+        plot_time_labels_.append(status_time_labels_.at(index));
+        plot_legacy_conn_.append(legacy_conn_history_.at(index));
+        plot_legacy_busy_.append(legacy_busy_history_.at(index));
+        plot_rest_ok_.append(rest_ok_history_.at(index));
+        plot_push_poll_.append(push_poll_history_.at(index));
+        plot_subscription_.append(subscription_history_.at(index));
+    }
+
+    auto toVariantList = [](const QVector<double> &values) {
+        QVariantList list;
+        list.reserve(values.size());
+        for (double v : values) {
+            list.append(v * 100.0);
+        }
+        return list;
+    };
+
+    status_chart_series_ = QVariantList{
+        QVariantMap{
+            {QStringLiteral("label"), QStringLiteral("Legacy TCP")},
+            {QStringLiteral("values"), toVariantList(plot_legacy_conn_)},
+            {QStringLiteral("color"), QStringLiteral("chart-1")},
+        },
+        QVariantMap{
+            {QStringLiteral("label"), QStringLiteral("Legacy 传输")},
+            {QStringLiteral("values"), toVariantList(plot_legacy_busy_)},
+            {QStringLiteral("color"), QStringLiteral("chart-2")},
+        },
+        QVariantMap{
+            {QStringLiteral("label"), QStringLiteral("REST /health")},
+            {QStringLiteral("values"), toVariantList(plot_rest_ok_)},
+            {QStringLiteral("color"), QStringLiteral("chart-3")},
+        },
+        QVariantMap{
+            {QStringLiteral("label"), QStringLiteral("订阅意图")},
+            {QStringLiteral("values"), toVariantList(plot_subscription_)},
+            {QStringLiteral("color"), QStringLiteral("chart-4")},
+        },
+        QVariantMap{
+            {QStringLiteral("label"), QStringLiteral("轮询 PING")},
+            {QStringLiteral("values"), toVariantList(plot_push_poll_)},
+            {QStringLiteral("color"), QStringLiteral("chart-5")},
+        },
+    };
 }

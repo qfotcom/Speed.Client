@@ -1,9 +1,13 @@
 # SpeedClient — Release APK: pull mirrored log under Android/data/.../Download/SpeedClient/.
+# Wireless adb: if script hangs on logcat, use -NoLogcatClear and/or -NoLaunch.
 param(
-    [string]$Serial = "192.168.1.3:5555",
+    [string]$Serial = "",
     [string[]]$AppArgs = @(),
     [switch]$NoLaunch,
+    [switch]$NoLogcatClear,
+    [switch]$SkipLogcat,
     [int]$WaitSeconds = 6,
+    [int]$AdbTimeoutSec = 20,
     [string]$AdbPath = "D:/APPLICATIONS/Android/SDK/platform-tools/adb.exe"
 )
 

@@ -44,10 +44,12 @@ qt_add_qml_module(SpeedClient
         Main.qml
         page-config.js
         pages/ConnectionPage.qml
+        pages/StatusPage.qml
         pages/RestPage.qml
         pages/LegacyPage.qml
         components/ClientMobilePage.qml
         components/ClientStatusBadge.qml
+        components/ClientStatusStepChart.qml
         components/ClientStatusAlert.qml
         components/ClientHttpStatus.js
         components/EventLogPanel.qml
