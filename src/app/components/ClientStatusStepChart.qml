@@ -2,8 +2,8 @@ import QtQuick
 import SenseDesign
 
 /**
- * 状态页 Step 图：固定 Y=0/100 刻度 + 图例。
- * 数值 0/100 与 ClientBackend 开关量序列一致。
+ * 状态页 Step 图：与 SenseDesign DemoChart 同一套 ShadcnChart（含 Y 刻度），
+ * 仅序列值为开关量 0/100。
  */
 Item {
     id: root
@@ -34,7 +34,7 @@ Item {
         yAxisFixedMin: 0
         yAxisFixedMax: 100
         yAxisFixedTickInterval: 50
-        yAxisLabelsVisible: false
+        yAxisLabelsVisible: true
         showLegend: true
     }
 }

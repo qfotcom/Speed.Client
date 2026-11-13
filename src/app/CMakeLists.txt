@@ -30,6 +30,7 @@ if(WIN32)
     list(APPEND SPEEDCLIENT_APP_SOURCES
         "${SENSE_DESIGN_DIR}/demo/WindowMinimizeBridge.cpp"
         "${SENSE_DESIGN_DIR}/demo/WindowMinimizeBridge.h"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../windows/appicon.rc"
     )
 endif()
 
@@ -44,10 +45,12 @@ qt_add_qml_module(SpeedClient
         Main.qml
         page-config.js
         pages/ConnectionPage.qml
+        pages/ServerStatusPage.qml
         pages/StatusPage.qml
         pages/RestPage.qml
         pages/LegacyPage.qml
         components/ClientMobilePage.qml
+        components/ServerMetricTile.qml
         components/ClientStatusBadge.qml
         components/ClientStatusStepChart.qml
         components/ClientStatusAlert.qml

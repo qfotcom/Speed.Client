@@ -31,7 +31,12 @@ FrameParseResult parseFrameBody(const QString &body)
     }
 
     if (lines.size() == 1) {
-        result.primary_line = lines.front();
+        const QString &line = lines.front();
+        if (line.startsWith(QStringLiteral("PUSH "))) {
+            result.push_lines.push_back(line);
+        } else {
+            result.primary_line = line;
+        }
         return result;
     }
 

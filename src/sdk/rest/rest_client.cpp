@@ -27,6 +27,11 @@ bool RestClient::isBusy() const
     return busy_;
 }
 
+bool RestClient::isSnapshotBusy() const
+{
+    return snapshot_busy_;
+}
+
 void RestClient::setEndpoint(const QString &host, quint16 port)
 {
     if (host_ != host) {
@@ -62,6 +67,34 @@ void RestClient::fetchHealth()
         }
         reply->deleteLater();
         setBusy(false);
+    });
+}
+
+void RestClient::fetchOpsSnapshot()
+{
+    if (snapshot_busy_) {
+        Q_EMIT errorOccurred(QStringLiteral("Ops snapshot 请求进行中"));
+        return;
+    }
+    snapshot_busy_ = true;
+    Q_EMIT snapshotBusyChanged();
+
+    QNetworkRequest request(buildUrl(QStringLiteral("/api/v1/ops/snapshot"), QUrlQuery()));
+    request.setHeader(QNetworkRequest::UserAgentHeader, QStringLiteral("SpeedClient/0.1"));
+
+    QNetworkReply *reply = nam_->get(request);
+    connect(reply, &QNetworkReply::finished, this, [this, reply]() {
+        const int status =
+            reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+        if (reply->error() != QNetworkReply::NoError) {
+            Q_EMIT errorOccurred(reply->errorString());
+            Q_EMIT opsSnapshotReceived(QString(), status > 0 ? status : 0);
+        } else {
+            Q_EMIT opsSnapshotReceived(QString::fromUtf8(reply->readAll()), status);
+        }
+        reply->deleteLater();
+        snapshot_busy_ = false;
+        Q_EMIT snapshotBusyChanged();
     });
 }
 

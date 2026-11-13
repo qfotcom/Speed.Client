@@ -1,6 +1,7 @@
 #include "legacy/legacy_client.hpp"
 #include "legacy/legacy_protocol.hpp"
 
+#include <QElapsedTimer>
 #include <QTcpSocket>
 #include <QTimer>
 #include <QtEndian>
@@ -13,6 +14,7 @@ LegacyClient::LegacyClient(QObject *parent)
     : QObject(parent)
     , socket_(new QTcpSocket(this))
     , poll_timer_(new QTimer(this))
+    , ping_rtt_timer_(new QElapsedTimer())
 {
     poll_timer_->setInterval(1500);
     connect(poll_timer_, &QTimer::timeout, this, &LegacyClient::onPollTick);
@@ -26,6 +28,8 @@ LegacyClient::LegacyClient(QObject *parent)
 LegacyClient::~LegacyClient()
 {
     disconnectFromServer();
+    delete ping_rtt_timer_;
+    ping_rtt_timer_ = nullptr;
 }
 
 QString LegacyClient::host() const
@@ -104,19 +108,33 @@ void LegacyClient::sendLine(const QString &line)
 
 void LegacyClient::setPushPollEnabled(bool enabled)
 {
-    if (enabled && connected_) {
-        poll_timer_->start();
-    } else {
+    user_push_poll_ = enabled;
+    updatePollTimer();
+}
+
+void LegacyClient::setOpsPushPollEnabled(bool enabled)
+{
+    ops_push_poll_ = enabled;
+    updatePollTimer();
+}
+
+void LegacyClient::updatePollTimer()
+{
+    const bool wantPoll = user_push_poll_ || ops_push_poll_;
+    if (!wantPoll || !connected_) {
         poll_timer_->stop();
+        return;
+    }
+    poll_timer_->setInterval(ops_push_poll_ ? 1000 : 1500);
+    if (!poll_timer_->isActive()) {
+        poll_timer_->start();
     }
 }
 
 void LegacyClient::onConnected()
 {
     setConnected(true);
-    if (poll_timer_->interval() > 0) {
-        // keep polling off until explicitly enabled
-    }
+    updatePollTimer();
     flushWriteQueue();
 }
 
@@ -124,6 +142,7 @@ void LegacyClient::onDisconnected()
 {
     setConnected(false);
     setBusy(false);
+    ping_rtt_waiting_ = false;
     poll_timer_->stop();
     outbound_lines_.clear();
     active_line_.clear();
@@ -208,10 +227,17 @@ void LegacyClient::finishFrame(const QByteArray &body)
         Q_EMIT pushReceived(topic, payload);
     }
 
-    Q_EMIT responseReceived(parsed.primary_line, bodyText);
-    setBusy(false);
-    active_line_.clear();
-    flushWriteQueue();
+    if (!parsed.primary_line.isEmpty()) {
+        if (ping_rtt_waiting_ && parsed.primary_line == QStringLiteral("PONG")
+            && ping_rtt_timer_->isValid()) {
+            ping_rtt_waiting_ = false;
+            Q_EMIT pingRttMeasured(static_cast<int>(ping_rtt_timer_->elapsed()));
+        }
+        Q_EMIT responseReceived(parsed.primary_line, bodyText);
+        setBusy(false);
+        active_line_.clear();
+        flushWriteQueue();
+    }
 }
 
 void LegacyClient::flushWriteQueue()
@@ -220,6 +246,10 @@ void LegacyClient::flushWriteQueue()
         return;
     }
     active_line_ = outbound_lines_.dequeue();
+    if (active_line_.trimmed() == QStringLiteral("PING")) {
+        ping_rtt_waiting_ = true;
+        ping_rtt_timer_->restart();
+    }
     setBusy(true);
     const QByteArray frame = encodeFrame(active_line_);
     const qint64 written = socket_->write(frame);

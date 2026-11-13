@@ -1,6 +1,10 @@
 #include "ClientBackend.h"
 
+#include <QtMath>
+
 #include <QDateTime>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QRegularExpression>
 #include <QTimer>
 #include <QVariantMap>
@@ -14,6 +18,8 @@
 #include <algorithm>
 
 namespace {
+
+const QString kOpsMetricsTopic = QStringLiteral("ops.host.metrics");
 
 QString shortTimeLabel(const QString &hhmmss)
 {
@@ -108,9 +114,21 @@ ClientBackend::ClientBackend(QObject *parent)
         if (legacyConnected()) {
             reconnect_timer_->stop();
             reconnect_backoff_ms_ = kReconnectBackoffInitialMs;
+            ops_metrics_subscribe_pending_ = true;
+            ops_metrics_stream_active_ = false;
+            Q_EMIT serverOpsStreamChanged();
             restoreLegacySessionAfterConnect();
+            subscribeOpsMetrics();
+            fetchServerSnapshot();
+            startLegacyPingProbe();
             return;
         }
+        stopLegacyPingProbe();
+        legacy_ping_rtt_ms_ = -1;
+        Q_EMIT legacyPingRttChanged();
+        ops_metrics_stream_active_ = false;
+        ops_metrics_subscribe_pending_ = auto_connect_on_startup_;
+        Q_EMIT serverOpsStreamChanged();
         if (auto_connect_on_startup_ && !manual_legacy_disconnect_) {
             scheduleAutoReconnect(kReconnectDelaySessionLostMs);
         }
@@ -131,10 +149,21 @@ ClientBackend::ClientBackend(QObject *parent)
             [this](const QString &primary, const QString &raw) {
                 last_legacy_line_ = primary;
                 Q_EMIT lastLegacyLineChanged();
-                appendLog(QStringLiteral("[Legacy] %1").arg(raw));
+                if (primary != QStringLiteral("PONG")) {
+                    appendLog(QStringLiteral("[Legacy] %1").arg(raw));
+                }
+            });
+    connect(legacy_, &speed::client::legacy::LegacyClient::pingRttMeasured, this,
+            [this](int rttMs) {
+                legacy_ping_rtt_ms_ = rttMs;
+                Q_EMIT legacyPingRttChanged();
             });
     connect(legacy_, &speed::client::legacy::LegacyClient::pushReceived, this,
             [this](const QString &topic, const QString &payload) {
+                if (topic == kOpsMetricsTopic) {
+                    applyOpsSnapshotJson(payload, QStringLiteral("PUSH"));
+                    return;
+                }
                 appendLog(QStringLiteral("[PUSH] %1 %2").arg(topic, payload));
             });
 
@@ -158,12 +187,26 @@ ClientBackend::ClientBackend(QObject *parent)
                 Q_EMIT lastRestEchoChanged();
                 appendLog(QStringLiteral("[REST echo] %1").arg(last_rest_echo_));
             });
+    connect(rest_, &speed::client::rest::RestClient::snapshotBusyChanged, this,
+            &ClientBackend::serverSnapshotBusyChanged);
+    connect(rest_, &speed::client::rest::RestClient::opsSnapshotReceived, this,
+            [this](const QString &body, int status) {
+                parseOpsSnapshotPayload(body, status);
+            });
 
     status_sample_timer_ = new QTimer(this);
     status_sample_timer_->setInterval(kStatusSampleIntervalMs);
     connect(status_sample_timer_, &QTimer::timeout, this, &ClientBackend::sampleStatusPoint);
     status_sample_timer_->start();
     sampleStatusPoint();
+
+    legacy_ping_timer_ = new QTimer(this);
+    legacy_ping_timer_->setInterval(2000);
+    connect(legacy_ping_timer_, &QTimer::timeout, this, [this]() {
+        if (legacyConnected()) {
+            legacy_->sendLine(QStringLiteral("PING"));
+        }
+    });
 
     // QML 就绪后再连（Main.qml 也会调一次 connectOnStartup）
     QTimer::singleShot(600, this, &ClientBackend::connectOnStartup);
@@ -336,6 +379,63 @@ void ClientBackend::setPushPollEnabled(bool value)
     sampleStatusPoint();
 }
 
+bool ClientBackend::serverOpsStreamActive() const
+{
+    return ops_metrics_stream_active_;
+}
+
+int ClientBackend::legacyPingRttMs() const
+{
+    return legacy_ping_rtt_ms_;
+}
+
+QString ClientBackend::legacyPingLabel() const
+{
+    if (legacy_ping_rtt_ms_ < 0) {
+        return legacyConnected() ? QStringLiteral("测速中…")
+                                 : QStringLiteral("Legacy 未连接");
+    }
+    return QStringLiteral("%1 ms → %2").arg(legacy_ping_rtt_ms_).arg(legacyEndpoint());
+}
+
+QString ClientBackend::legacyPingTone() const
+{
+    if (!legacyConnected() || legacy_ping_rtt_ms_ < 0) {
+        return QStringLiteral("pending");
+    }
+    if (legacy_ping_rtt_ms_ < 80) {
+        return QStringLiteral("success");
+    }
+    if (legacy_ping_rtt_ms_ < 200) {
+        return QStringLiteral("neutral");
+    }
+    return QStringLiteral("danger");
+}
+
+void ClientBackend::startLegacyPingProbe()
+{
+    if (!legacy_ping_timer_) {
+        return;
+    }
+    legacy_ping_rtt_ms_ = -1;
+    Q_EMIT legacyPingRttChanged();
+    if (!legacy_ping_timer_->isActive()) {
+        legacy_ping_timer_->start();
+    }
+    QTimer::singleShot(200, this, [this]() {
+        if (legacyConnected()) {
+            legacy_->sendLine(QStringLiteral("PING"));
+        }
+    });
+}
+
+void ClientBackend::stopLegacyPingProbe()
+{
+    if (legacy_ping_timer_) {
+        legacy_ping_timer_->stop();
+    }
+}
+
 void ClientBackend::setAutoConnectOnStartup(bool value)
 {
     if (auto_connect_on_startup_ == value) {
@@ -344,8 +444,15 @@ void ClientBackend::setAutoConnectOnStartup(bool value)
     auto_connect_on_startup_ = value;
     if (!value) {
         reconnect_timer_->stop();
-    } else if (!legacyConnected() && !manual_legacy_disconnect_) {
-        scheduleAutoReconnect();
+        ops_metrics_stream_active_ = false;
+        Q_EMIT serverOpsStreamChanged();
+    } else {
+        ops_metrics_subscribe_pending_ = true;
+        if (legacyConnected()) {
+            subscribeOpsMetrics();
+        } else if (!manual_legacy_disconnect_) {
+            scheduleAutoReconnect();
+        }
     }
     Q_EMIT autoConnectOnStartupChanged();
 }
@@ -376,6 +483,7 @@ void ClientBackend::disconnectLegacy()
 {
     manual_legacy_disconnect_ = true;
     reconnect_timer_->stop();
+    stopLegacyPingProbe();
     legacy_->disconnectFromServer();
     appendLog(QStringLiteral("[Legacy] 已断开（已暂停自动重连，直至再次手动连接）"));
 }
@@ -448,8 +556,10 @@ void ClientBackend::runAutoConnect(const QString &reason)
     appendLog(QStringLiteral("[%1] Legacy → %2 · REST → %3")
                   .arg(reason, legacyEndpoint(), restEndpoint()));
     manual_legacy_disconnect_ = false;
+    ops_metrics_subscribe_pending_ = auto_connect_on_startup_;
     legacy_->connectToServer();
     restHealth();
+    fetchServerSnapshot();
 }
 
 void ClientBackend::scheduleAutoReconnect(int delayMs)
@@ -473,6 +583,7 @@ void ClientBackend::runLegacyReconnect(const QString &reason)
 
 void ClientBackend::restoreLegacySessionAfterConnect()
 {
+    restoreOpsMetricsSubscription();
     if (!legacy_subscription_active_) {
         return;
     }
@@ -483,18 +594,42 @@ void ClientBackend::restoreLegacySessionAfterConnect()
     appendLog(QStringLiteral("[Legacy] 重连后恢复订阅 %1").arg(subscribe_topic_));
 }
 
+void ClientBackend::subscribeOpsMetrics()
+{
+    if (!auto_connect_on_startup_ || !legacyConnected() || !ops_metrics_subscribe_pending_) {
+        return;
+    }
+    legacy_->sendLine(QStringLiteral("SUB %1").arg(kOpsMetricsTopic));
+    ops_metrics_subscribe_pending_ = false;
+    ops_metrics_stream_active_ = true;
+    appendLog(QStringLiteral("[Legacy] 已订阅 %1（流式直推）").arg(kOpsMetricsTopic));
+    Q_EMIT serverOpsStreamChanged();
+}
+
+void ClientBackend::restoreOpsMetricsSubscription()
+{
+    if (auto_connect_on_startup_) {
+        ops_metrics_subscribe_pending_ = true;
+        subscribeOpsMetrics();
+    }
+}
+
 void ClientBackend::applyCpolarDefaults()
 {
-    const speed::client::ClientSettings cfg = speed::client::ClientSettings::cpolarDefaults();
+    const speed::client::ClientSettings cfg = speed::client::ClientSettings::productionDefaults();
     setLegacyHost(cfg.legacy_host);
     setRestHost(cfg.rest_host);
     setLegacyPort(cfg.legacy_port);
     setRestPort(cfg.rest_port);
     saveSettings();
-    appendLog(QStringLiteral("[配置] 已恢复 cpolar 默认双通道"));
-    Q_EMIT toastRequested(QStringLiteral("已恢复 cpolar 默认（Legacy / REST 独立主机）"),
-                          QStringLiteral("success"));
-    runAutoConnect(QStringLiteral("cpolar 默认"));
+    appendLog(QStringLiteral("[配置] 已恢复生产默认端点（%1）").arg(cfg.legacy_host));
+    Q_EMIT toastRequested(
+        QStringLiteral("已恢复默认：%1（Legacy %2 / REST %3）")
+            .arg(cfg.legacy_host)
+            .arg(cfg.legacy_port)
+            .arg(cfg.rest_port),
+        QStringLiteral("success"));
+    runAutoConnect(QStringLiteral("生产默认"));
 }
 
 void ClientBackend::appendLog(const QString &line)
@@ -667,4 +802,334 @@ void ClientBackend::rebuildStatusChartSeries()
             {QStringLiteral("color"), QStringLiteral("chart-5")},
         },
     };
+}
+
+bool ClientBackend::serverSnapshotBusy() const
+{
+    return rest_->isSnapshotBusy();
+}
+
+bool ClientBackend::serverSnapshotReady() const
+{
+    return server_snapshot_ready_;
+}
+
+QString ClientBackend::serverSnapshotError() const
+{
+    return server_snapshot_error_;
+}
+
+QString ClientBackend::serverSnapshotUpdatedLabel() const
+{
+    return server_snapshot_updated_label_;
+}
+
+QString ClientBackend::serverAppName() const
+{
+    return server_app_name_;
+}
+
+QString ClientBackend::serverPlatformLabel() const
+{
+    return server_platform_label_;
+}
+
+QVariantList ClientBackend::serverOpsTiles() const
+{
+    return server_ops_tiles_;
+}
+
+double ClientBackend::serverMemUsedPercent() const
+{
+    return server_mem_used_percent_;
+}
+
+double ClientBackend::serverCpuPercent() const
+{
+    return server_cpu_percent_;
+}
+
+QString ClientBackend::serverHostMemDetail() const
+{
+    return server_host_mem_detail_;
+}
+
+QString ClientBackend::serverProcessRssDetail() const
+{
+    return server_process_rss_detail_;
+}
+
+double ClientBackend::serverRootDiskUsedPercent() const
+{
+    return server_root_disk_used_percent_;
+}
+
+QString ClientBackend::serverRootDiskDetail() const
+{
+    return server_root_disk_detail_;
+}
+
+QString ClientBackend::serverRootDiskMount() const
+{
+    return server_root_disk_mount_;
+}
+
+bool ClientBackend::serverHasRootDisk() const
+{
+    return server_has_root_disk_;
+}
+
+double ClientBackend::serverDataDiskUsedPercent() const
+{
+    return server_data_disk_used_percent_;
+}
+
+QString ClientBackend::serverDataDiskDetail() const
+{
+    return server_data_disk_detail_;
+}
+
+QString ClientBackend::serverDataDiskMount() const
+{
+    return server_data_disk_mount_;
+}
+
+bool ClientBackend::serverHasDataDisk() const
+{
+    return server_has_data_disk_;
+}
+
+void ClientBackend::fetchServerSnapshot()
+{
+    rest_->fetchOpsSnapshot();
+}
+
+QVariant ClientBackend::metricValue(const QJsonArray &metrics, const QString &id)
+{
+    for (const QJsonValue &item : metrics) {
+        const QJsonObject obj = item.toObject();
+        if (obj.value(QStringLiteral("id")).toString() == id) {
+            return obj.value(QStringLiteral("v")).toVariant();
+        }
+    }
+    return QVariant();
+}
+
+QString ClientBackend::formatBytes(qint64 bytes)
+{
+    if (bytes < 0) {
+        return QStringLiteral("—");
+    }
+    const double b = static_cast<double>(bytes);
+    if (b >= 1e9) {
+        return QStringLiteral("%1 GB").arg(b / 1e9, 0, 'f', 2);
+    }
+    if (b >= 1e6) {
+        return QStringLiteral("%1 MB").arg(b / 1e6, 0, 'f', 1);
+    }
+    if (b >= 1e3) {
+        return QStringLiteral("%1 KB").arg(b / 1e3, 0, 'f', 0);
+    }
+    return QStringLiteral("%1 B").arg(bytes);
+}
+
+QString ClientBackend::formatUsedTotalBytes(qint64 usedBytes, qint64 totalBytes)
+{
+    if (usedBytes < 0 || totalBytes <= 0) {
+        return QStringLiteral("—");
+    }
+    return QStringLiteral("%1 / %2").arg(formatBytes(usedBytes), formatBytes(totalBytes));
+}
+
+double ClientBackend::usedPercentFromBytes(qint64 availBytes, qint64 totalBytes)
+{
+    if (totalBytes <= 0 || availBytes < 0) {
+        return kInvalidMetric;
+    }
+    const qint64 used = qMax<qint64>(0, totalBytes - availBytes);
+    return qBound(0.0, static_cast<double>(used) * 100.0 / static_cast<double>(totalBytes), 100.0);
+}
+
+QString ClientBackend::formatDurationSec(double seconds)
+{
+    if (seconds < 0 || qIsNaN(seconds)) {
+        return QStringLiteral("—");
+    }
+    const qint64 total = static_cast<qint64>(seconds);
+    const qint64 days = total / 86400;
+    const qint64 hours = (total % 86400) / 3600;
+    const qint64 mins = (total % 3600) / 60;
+    if (days > 0) {
+        return QStringLiteral("%1天 %2小时").arg(days).arg(hours);
+    }
+    if (hours > 0) {
+        return QStringLiteral("%1小时 %2分").arg(hours).arg(mins);
+    }
+    if (mins > 0) {
+        return QStringLiteral("%1分 %2秒").arg(mins).arg(total % 60);
+    }
+    return QStringLiteral("%1 秒").arg(total);
+}
+
+void ClientBackend::parseOpsSnapshotPayload(const QString &body, int httpStatus)
+{
+    if (httpStatus < 200 || httpStatus >= 300 || body.isEmpty()) {
+        server_snapshot_ready_ = false;
+        server_snapshot_error_ = httpStatus > 0
+                                     ? QStringLiteral("HTTP %1").arg(httpStatus)
+                                     : QStringLiteral("无法获取 ops snapshot");
+        appendLog(QStringLiteral("[REST /api/v1/ops/snapshot] %1").arg(server_snapshot_error_));
+        Q_EMIT serverSnapshotChanged();
+        return;
+    }
+    applyOpsSnapshotJson(body, QStringLiteral("REST"));
+}
+
+void ClientBackend::applyOpsSnapshotJson(const QString &body, const QString &source)
+{
+    if (body.isEmpty()) {
+        return;
+    }
+
+    QJsonParseError parseError;
+    const QJsonDocument doc = QJsonDocument::fromJson(body.toUtf8(), &parseError);
+    if (parseError.error != QJsonParseError::NoError || !doc.isObject()) {
+        if (source != QStringLiteral("PUSH")) {
+            server_snapshot_ready_ = false;
+            server_snapshot_error_ = QStringLiteral("JSON 解析失败");
+            Q_EMIT serverSnapshotChanged();
+        }
+        return;
+    }
+
+    const QJsonObject root = doc.object();
+    const QJsonArray metrics = root.value(QStringLiteral("metrics")).toArray();
+    server_snapshot_ts_ms_ = root.value(QStringLiteral("ts_ms")).toVariant().toLongLong();
+
+    server_app_name_ = metricValue(metrics, QStringLiteral("meta.app_name")).toString();
+    if (server_app_name_.isEmpty()) {
+        server_app_name_ = QStringLiteral("speed_server");
+    }
+    const QString os = metricValue(metrics, QStringLiteral("meta.platform.os")).toString();
+    const QString arch = metricValue(metrics, QStringLiteral("meta.platform.arch")).toString();
+    server_platform_label_ = os.isEmpty() ? arch : QStringLiteral("%1 · %2").arg(os, arch);
+
+    const QVariant cpuVar = metricValue(metrics, QStringLiteral("host.cpu.utilization_pct"));
+    server_cpu_percent_ = cpuVar.isNull() || !cpuVar.isValid()
+                              ? kInvalidMetric
+                              : cpuVar.toDouble();
+
+    const qint64 memTotal =
+        metricValue(metrics, QStringLiteral("host.mem.total_bytes")).toLongLong();
+    const qint64 memAvail =
+        metricValue(metrics, QStringLiteral("host.mem.available_bytes")).toLongLong();
+    if (memTotal > 0 && memAvail >= 0) {
+        server_mem_used_percent_ = usedPercentFromBytes(memAvail, memTotal);
+        const qint64 memUsed = qMax<qint64>(0, memTotal - memAvail);
+        server_host_mem_detail_ =
+            QStringLiteral("已用 %1 / 总计 %2 · 可用 %3")
+                .arg(formatBytes(memUsed), formatBytes(memTotal), formatBytes(memAvail));
+    } else {
+        server_mem_used_percent_ = kInvalidMetric;
+        server_host_mem_detail_.clear();
+    }
+
+    const qint64 procRss =
+        metricValue(metrics, QStringLiteral("process.rss_bytes")).toLongLong();
+    server_process_rss_detail_ = procRss > 0 ? formatBytes(procRss) : QString();
+
+    auto applyDisk = [&](const QString &prefix, double &pct, QString &detail, QString &mount,
+                         bool &has) {
+        const qint64 total =
+            metricValue(metrics, prefix + QStringLiteral(".total_bytes")).toLongLong();
+        const qint64 avail =
+            metricValue(metrics, prefix + QStringLiteral(".available_bytes")).toLongLong();
+        const qint64 used =
+            metricValue(metrics, prefix + QStringLiteral(".used_bytes")).toLongLong();
+        mount = metricValue(metrics, prefix + QStringLiteral(".mount_path")).toString();
+        const QVariant pctVar = metricValue(metrics, prefix + QStringLiteral(".utilization_pct"));
+        if (total <= 0) {
+            has = false;
+            pct = kInvalidMetric;
+            detail.clear();
+            return;
+        }
+        has = true;
+        if (pctVar.isValid() && !pctVar.isNull()) {
+            pct = pctVar.toDouble();
+        } else if (avail >= 0) {
+            pct = usedPercentFromBytes(avail, total);
+        } else {
+            pct = kInvalidMetric;
+        }
+        const qint64 usedBytes = used >= 0 ? used : qMax<qint64>(0, total - qMax(avail, qint64(0)));
+        detail = QStringLiteral("%1 · 可用 %2")
+                     .arg(formatUsedTotalBytes(usedBytes, total),
+                          avail >= 0 ? formatBytes(avail) : QStringLiteral("—"));
+    };
+    applyDisk(QStringLiteral("host.disk.system"), server_root_disk_used_percent_,
+              server_root_disk_detail_, server_root_disk_mount_, server_has_root_disk_);
+    applyDisk(QStringLiteral("host.disk.data"), server_data_disk_used_percent_,
+              server_data_disk_detail_, server_data_disk_mount_, server_has_data_disk_);
+
+    auto metricNumber = [&](const QString &id) -> QString {
+        const QVariant v = metricValue(metrics, id);
+        if (!v.isValid() || v.isNull()) {
+            return QStringLiteral("—");
+        }
+        return QString::number(v.toDouble(), 'f', v.toDouble() >= 10 ? 0 : 1);
+    };
+
+    server_ops_tiles_.clear();
+    auto pushTile = [this](const QString &icon, const QString &title, const QString &value,
+                           const QString &hint) {
+        server_ops_tiles_.append(QVariantMap{
+            {QStringLiteral("icon"), icon},
+            {QStringLiteral("title"), title},
+            {QStringLiteral("value"), value},
+            {QStringLiteral("hint"), hint},
+        });
+    };
+
+    pushTile(QStringLiteral("users"), QStringLiteral("活跃连接"),
+             metricNumber(QStringLiteral("framework.connections.active")),
+             QStringLiteral("实时 TCP / HTTP 会话"));
+    pushTile(QStringLiteral("list-checks"), QStringLiteral("累计请求"),
+             metricNumber(QStringLiteral("framework.requests.total")),
+             QStringLiteral("自进程启动"));
+    pushTile(QStringLiteral("radio-tower"), QStringLiteral("事件发布"),
+             metricNumber(QStringLiteral("framework.events.published_total")),
+             QStringLiteral("EventBus"));
+    pushTile(QStringLiteral("refresh-cw"), QStringLiteral("配置热加载"),
+             metricNumber(QStringLiteral("framework.config.reloads_total")),
+             QStringLiteral("reload 次数"));
+
+    pushTile(QStringLiteral("timer"), QStringLiteral("进程运行"),
+             formatDurationSec(metricValue(metrics, QStringLiteral("process.uptime_sec")).toDouble()),
+             QStringLiteral("Ops 服务 uptime"));
+    const QVariant loadVar = metricValue(metrics, QStringLiteral("host.loadavg.1m"));
+    if (loadVar.isValid() && !loadVar.isNull()) {
+        pushTile(QStringLiteral("gauge"), QStringLiteral("负载 1m"),
+                 QString::number(loadVar.toDouble(), 'f', 2), QStringLiteral("仅 Linux"));
+    }
+
+    if (server_snapshot_ts_ms_ > 0) {
+        const QDateTime when = QDateTime::fromMSecsSinceEpoch(server_snapshot_ts_ms_, Qt::UTC).toLocalTime();
+        server_snapshot_updated_label_ =
+            when.toString(QStringLiteral("yyyy-MM-dd HH:mm:ss"));
+    } else {
+        server_snapshot_updated_label_ = QDateTime::currentDateTime().toString(QStringLiteral("HH:mm:ss"));
+    }
+
+    server_snapshot_ready_ = true;
+    server_snapshot_error_.clear();
+    if (source == QStringLiteral("PUSH")) {
+        if (!ops_metrics_stream_active_) {
+            ops_metrics_stream_active_ = true;
+            Q_EMIT serverOpsStreamChanged();
+        }
+    } else {
+        appendLog(QStringLiteral("[%1 snapshot] %2 指标").arg(source).arg(server_ops_tiles_.size()));
+    }
+    Q_EMIT serverSnapshotChanged();
 }

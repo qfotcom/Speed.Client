@@ -6,27 +6,34 @@ namespace speed::client {
 
 QString ClientSettings::defaultLegacyHost()
 {
-    return QStringLiteral("1.tcp.cpolar.cn");
+    return QStringLiteral("api.qfot.com");
 }
 
 QString ClientSettings::defaultRestHost()
 {
-    return QStringLiteral("6.tcp.cpolar.cn");
+    return QStringLiteral("api.qfot.com");
 }
 
 quint16 ClientSettings::defaultLegacyPort()
 {
-    return 20771;
+    return 9001;
 }
 
 quint16 ClientSettings::defaultRestPort()
 {
-    return 10513;
+    return 8080;
 }
 
 static bool isLanPortPair(quint16 legacyPort, quint16 restPort)
 {
     return legacyPort == 9001 && restPort == 8080;
+}
+
+static bool isArchivedCpolarEndpoints(const ClientSettings &cfg)
+{
+    return cfg.legacy_host == QStringLiteral("1.tcp.cpolar.cn")
+            && cfg.rest_host == QStringLiteral("6.tcp.cpolar.cn")
+            && cfg.legacy_port == 20771 && cfg.rest_port == 10513;
 }
 
 ClientSettings ClientSettings::load()
@@ -90,6 +97,16 @@ ClientSettings ClientSettings::load()
         settings.value(QStringLiteral("echo_text"), QStringLiteral("world")).toString();
     cfg.auto_connect_on_startup =
         settings.value(QStringLiteral("auto_connect_on_startup"), true).toBool();
+
+    if (isArchivedCpolarEndpoints(cfg)) {
+        const ClientSettings prod = productionDefaults();
+        cfg.legacy_host = prod.legacy_host;
+        cfg.rest_host = prod.rest_host;
+        cfg.legacy_port = prod.legacy_port;
+        cfg.rest_port = prod.rest_port;
+        cfg.save();
+    }
+
     return cfg;
 }
 
@@ -108,7 +125,7 @@ void ClientSettings::save() const
     settings.sync();
 }
 
-ClientSettings ClientSettings::cpolarDefaults()
+ClientSettings ClientSettings::productionDefaults()
 {
     ClientSettings cfg;
     cfg.legacy_host = defaultLegacyHost();
@@ -116,6 +133,11 @@ ClientSettings ClientSettings::cpolarDefaults()
     cfg.legacy_port = defaultLegacyPort();
     cfg.rest_port = defaultRestPort();
     return cfg;
+}
+
+ClientSettings ClientSettings::cpolarDefaults()
+{
+    return productionDefaults();
 }
 
 } // namespace speed::client

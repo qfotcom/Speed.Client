@@ -51,7 +51,7 @@ Item {
     ClientMobilePage {
         id: page
         width: parent.width
-        title: qsTr("通道状态")
+        title: qsTr("客户端通道")
         subtitle: qsTr("Step 阶梯线展示各通道开关量，点按曲线可看时间与状态。")
 
         ShadcnCard {
@@ -100,11 +100,10 @@ Item {
             Layout.fillWidth: true
             Layout.preferredHeight: implicitHeight > 0 ? implicitHeight : 280
             title: qsTr("多通道时序")
-            description: qsTr("图例为通道名称；低/高为关/开")
+            description: qsTr("图例为通道名称；Y 轴 0 / 100 表示关 / 开")
             categories: ClientBackend.statusChartCategories
             series: statusSeriesForChart()
             footerText: qsTr("Legacy 断线重连为阶跃；传输线为短时脉冲。")
-            yAxisLabelsVisible: false
             showLegend: true
 
             Connections {
@@ -152,7 +151,6 @@ Item {
                                 categories: ClientBackend.statusChartCategories
                                 description: ""
                                 showLegend: false
-                                yAxisLabelsVisible: false
                             }
                         }
                     }

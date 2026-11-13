@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QJsonArray>
 #include <QObject>
 #include <QString>
 #include <QStringList>
@@ -46,6 +47,30 @@ class ClientBackend : public QObject
                    statusChartChanged)
     Q_PROPERTY(QVariantList statusChartSeries READ statusChartSeries NOTIFY statusChartChanged)
     Q_PROPERTY(int statusHistorySeconds READ statusHistorySeconds CONSTANT)
+    Q_PROPERTY(bool serverSnapshotBusy READ serverSnapshotBusy NOTIFY serverSnapshotBusyChanged)
+    Q_PROPERTY(bool serverSnapshotReady READ serverSnapshotReady NOTIFY serverSnapshotChanged)
+    Q_PROPERTY(QString serverSnapshotError READ serverSnapshotError NOTIFY serverSnapshotChanged)
+    Q_PROPERTY(QString serverSnapshotUpdatedLabel READ serverSnapshotUpdatedLabel NOTIFY
+                   serverSnapshotChanged)
+    Q_PROPERTY(QString serverAppName READ serverAppName NOTIFY serverSnapshotChanged)
+    Q_PROPERTY(QString serverPlatformLabel READ serverPlatformLabel NOTIFY serverSnapshotChanged)
+    Q_PROPERTY(QVariantList serverOpsTiles READ serverOpsTiles NOTIFY serverSnapshotChanged)
+    Q_PROPERTY(double serverMemUsedPercent READ serverMemUsedPercent NOTIFY serverSnapshotChanged)
+    Q_PROPERTY(double serverCpuPercent READ serverCpuPercent NOTIFY serverSnapshotChanged)
+    Q_PROPERTY(QString serverHostMemDetail READ serverHostMemDetail NOTIFY serverSnapshotChanged)
+    Q_PROPERTY(QString serverProcessRssDetail READ serverProcessRssDetail NOTIFY serverSnapshotChanged)
+    Q_PROPERTY(double serverRootDiskUsedPercent READ serverRootDiskUsedPercent NOTIFY serverSnapshotChanged)
+    Q_PROPERTY(QString serverRootDiskDetail READ serverRootDiskDetail NOTIFY serverSnapshotChanged)
+    Q_PROPERTY(QString serverRootDiskMount READ serverRootDiskMount NOTIFY serverSnapshotChanged)
+    Q_PROPERTY(bool serverHasRootDisk READ serverHasRootDisk NOTIFY serverSnapshotChanged)
+    Q_PROPERTY(double serverDataDiskUsedPercent READ serverDataDiskUsedPercent NOTIFY serverSnapshotChanged)
+    Q_PROPERTY(QString serverDataDiskDetail READ serverDataDiskDetail NOTIFY serverSnapshotChanged)
+    Q_PROPERTY(QString serverDataDiskMount READ serverDataDiskMount NOTIFY serverSnapshotChanged)
+    Q_PROPERTY(bool serverHasDataDisk READ serverHasDataDisk NOTIFY serverSnapshotChanged)
+    Q_PROPERTY(bool serverOpsStreamActive READ serverOpsStreamActive NOTIFY serverOpsStreamChanged)
+    Q_PROPERTY(int legacyPingRttMs READ legacyPingRttMs NOTIFY legacyPingRttChanged)
+    Q_PROPERTY(QString legacyPingLabel READ legacyPingLabel NOTIFY legacyPingRttChanged)
+    Q_PROPERTY(QString legacyPingTone READ legacyPingTone NOTIFY legacyPingRttChanged)
 
 public:
     explicit ClientBackend(QObject *parent = nullptr);
@@ -72,6 +97,29 @@ public:
     QStringList statusChartCategories() const;
     QVariantList statusChartSeries() const;
     int statusHistorySeconds() const;
+    bool serverSnapshotBusy() const;
+    bool serverSnapshotReady() const;
+    QString serverSnapshotError() const;
+    QString serverSnapshotUpdatedLabel() const;
+    QString serverAppName() const;
+    QString serverPlatformLabel() const;
+    QVariantList serverOpsTiles() const;
+    double serverMemUsedPercent() const;
+    double serverCpuPercent() const;
+    QString serverHostMemDetail() const;
+    QString serverProcessRssDetail() const;
+    double serverRootDiskUsedPercent() const;
+    QString serverRootDiskDetail() const;
+    QString serverRootDiskMount() const;
+    bool serverHasRootDisk() const;
+    double serverDataDiskUsedPercent() const;
+    QString serverDataDiskDetail() const;
+    QString serverDataDiskMount() const;
+    bool serverHasDataDisk() const;
+    bool serverOpsStreamActive() const;
+    int legacyPingRttMs() const;
+    QString legacyPingLabel() const;
+    QString legacyPingTone() const;
 
     void setLegacyHost(const QString &value);
     void setRestHost(const QString &value);
@@ -94,9 +142,10 @@ public:
     Q_INVOKABLE void clearLog();
     /** Legacy 连接 + REST /health（启动与手动「立即连接」共用） */
     Q_INVOKABLE void connectOnStartup();
-    /** 恢复 cpolar 默认双 host + 双端口并保存 */
+    /** 恢复生产环境默认（api.qfot.com / 9001 / 8080）并保存 */
     Q_INVOKABLE void applyCpolarDefaults();
     Q_INVOKABLE void clearStatusHistory();
+    Q_INVOKABLE void fetchServerSnapshot();
 
 Q_SIGNALS:
     void legacyHostChanged();
@@ -118,9 +167,26 @@ Q_SIGNALS:
     void lastLegacyLineChanged();
     void eventLogChanged();
     void statusChartChanged();
+    void serverSnapshotBusyChanged();
+    void serverSnapshotChanged();
+    void serverOpsStreamChanged();
+    void legacyPingRttChanged();
     void toastRequested(const QString &message, const QString &level);
 
 private:
+    void parseOpsSnapshotPayload(const QString &body, int httpStatus);
+    void applyOpsSnapshotJson(const QString &body, const QString &source);
+    void subscribeOpsMetrics();
+    void restoreOpsMetricsSubscription();
+    void startLegacyPingProbe();
+    void stopLegacyPingProbe();
+    static QVariant metricValue(const QJsonArray &metrics, const QString &id);
+    static QString formatBytes(qint64 bytes);
+    static QString formatUsedTotalBytes(qint64 usedBytes, qint64 totalBytes);
+    static QString formatDurationSec(double seconds);
+    static double usedPercentFromBytes(qint64 availBytes, qint64 totalBytes);
+
+    static constexpr double kInvalidMetric = -1.0;
     void sampleStatusPoint();
     void rebuildStatusChartSeries();
     bool restHealthOk() const;
@@ -139,16 +205,16 @@ private:
     static constexpr int kStatusSampleIntervalMs = 1000;
     static constexpr int kStatusPlotMaxPoints = 40;
     static constexpr int kStatusAxisLabelCount = 4;
-
     speed::client::legacy::LegacyClient *legacy_{nullptr};
     speed::client::rest::RestClient *rest_{nullptr};
     QTimer *reconnect_timer_{nullptr};
     QTimer *status_sample_timer_{nullptr};
+    QTimer *legacy_ping_timer_{nullptr};
 
     QString legacy_host_;
     QString rest_host_;
-    int legacy_port_{20771};
-    int rest_port_{10513};
+    int legacy_port_{9001};
+    int rest_port_{8080};
     bool auto_connect_on_startup_{true};
     bool manual_legacy_disconnect_{false};
     bool startup_connect_done_{false};
@@ -175,4 +241,27 @@ private:
     QVector<double> plot_push_poll_;
     QVector<double> plot_subscription_;
     QVariantList status_chart_series_;
+
+    bool server_snapshot_ready_{false};
+    QString server_snapshot_error_;
+    QString server_snapshot_updated_label_;
+    QString server_app_name_;
+    QString server_platform_label_;
+    QVariantList server_ops_tiles_;
+    double server_mem_used_percent_{kInvalidMetric};
+    double server_cpu_percent_{kInvalidMetric};
+    QString server_host_mem_detail_;
+    QString server_process_rss_detail_;
+    double server_root_disk_used_percent_{kInvalidMetric};
+    QString server_root_disk_detail_;
+    QString server_root_disk_mount_;
+    bool server_has_root_disk_{false};
+    double server_data_disk_used_percent_{kInvalidMetric};
+    QString server_data_disk_detail_;
+    QString server_data_disk_mount_;
+    bool server_has_data_disk_{false};
+    qint64 server_snapshot_ts_ms_{0};
+    bool ops_metrics_subscribe_pending_{true};
+    bool ops_metrics_stream_active_{false};
+    int legacy_ping_rtt_ms_{-1};
 };

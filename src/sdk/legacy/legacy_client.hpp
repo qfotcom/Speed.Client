@@ -6,6 +6,7 @@
 
 class QTcpSocket;
 class QTimer;
+class QElapsedTimer;
 
 namespace speed::client::legacy {
 
@@ -28,6 +29,8 @@ public Q_SLOTS:
     void disconnectFromServer();
     void sendLine(const QString &line);
     void setPushPollEnabled(bool enabled);
+    /** Workflow 下 PUSH 随 PING/响应捎带；订阅 ops 等 topic 时需开启 */
+    void setOpsPushPollEnabled(bool enabled);
 
 Q_SIGNALS:
     void hostChanged();
@@ -37,6 +40,7 @@ Q_SIGNALS:
     void errorOccurred(const QString &message);
     void pushReceived(const QString &topic, const QString &payload);
     void responseReceived(const QString &primaryLine, const QString &rawBody);
+    void pingRttMeasured(int rttMs);
 
 private Q_SLOTS:
     void onConnected();
@@ -51,6 +55,7 @@ private:
     void flushWriteQueue();
     void setConnected(bool value);
     void setBusy(bool value);
+    void updatePollTimer();
 
     QTcpSocket *socket_{nullptr};
     QTimer *poll_timer_{nullptr};
@@ -64,6 +69,10 @@ private:
     quint32 pending_body_length_{0};
     QQueue<QString> outbound_lines_;
     QString active_line_;
+    bool user_push_poll_{false};
+    bool ops_push_poll_{false};
+    bool ping_rtt_waiting_{false};
+    QElapsedTimer *ping_rtt_timer_{nullptr};
 };
 
 } // namespace speed::client::legacy

@@ -9,7 +9,8 @@ Speed.Server 示例客户端（**REST** + **Legacy 订阅推送**），UI 使用
 | `src/sdk/` | `speed_client_sdk`：Legacy 帧协议、REST HTTP、QSettings 配置 |
 | `src/app/` | Qt Quick 应用 `SpeedClient`（`ShadcnAppWindow` + 三页测试） |
 | `third_party/SenseDesign` | **Git 子模块**（SenseDesign 2.x / shadcn QML），与 SenseWorkflow 相同约定 |
-| `android/` | Android 包清单（明文 HTTP、INTERNET） |
+| `android/` | Android 包清单、启动图标 `res/mipmap-*`（明文 HTTP、INTERNET） |
+| `windows/` | PC 任务栏 `.ico` 与矢量主图（与 Android 同源） |
 
 旧版 Tabler `SenseAppWindow` / `Sense*` 组件已移除；外壳为 **`ShadcnAppWindow`**（`SenseAppShell`），页面为 **连接 / REST / 推送** 三页结构不变。
 
@@ -38,13 +39,23 @@ cmake -B build -DCMAKE_PREFIX_PATH="<Qt6 安装路径>"
 cmake --build build --config Release
 ```
 
+### 应用图标（PC 与 Android 一致）
+
+主图为 `windows/SpeedClientAppIcon.svg`（与 SenseDesign Demo 四色块同款）。改图后生成资源：
+
+```powershell
+python tools/gen_speedclient_app_icon.py
+```
+
+会写入 `windows/SpeedClient.ico` 与各密度 `android/res/mipmap-*/ic_launcher*.png`。Windows 经 `windows/appicon.rc` 链入可执行文件；Android 在 `AndroidManifest.xml` 的 `android:icon` / `android:roundIcon`。
+
 ### Android
 
 选择 **Qt 6.x for Android arm64-v8a** Kit，构建 **SpeedClient**（Debug 便于签名安装）。
 
 - 包名：`com.speed.client`
 - 局域网：Legacy / REST 主机均填 PC IP（模拟器常用 `10.0.2.2`），端口 **9001 / 8080**
-- 跨网：使用默认 cpolar 双主机（见上表），无需改端口
+- 跨网：使用默认 `api.qfot.com`（见上表）；归档 cpolar 隧道见 Speed.Server 文档
 
 **服务端**：Legacy/REST 需监听 `0.0.0.0`。
 
@@ -74,12 +85,14 @@ powershell -File tools/android_debug_debug.ps1 -Serial <device>
 
 见 [Speed.Server/docs/speed-client-connectivity.md](../Speed.Server/docs/speed-client-connectivity.md)。
 
-**默认（cpolar 预留 TCP，跨网）：**
+**默认（生产 VPS，`api.qfot.com`）：**
 
 | 通道 | 主机 | 端口 |
 |------|------|------|
-| Legacy | `1.tcp.cpolar.cn` | 20771 |
-| REST | `6.tcp.cpolar.cn` | 10513 |
+| Legacy | `api.qfot.com` | 9001 |
+| REST | `api.qfot.com` | 8080 |
+
+侧栏 **服务端**：`SUB ops.host.metrics` 收 **Legacy 流式** 独立帧 PUSH；展示 CPU/内存 **GB** 与 **系统盘、数据盘**（`host.disk.*`）；**Legacy PING 往返延迟**（约 2s 刷新，本机指标非服务端 snapshot）；REST 仅首屏校准。
 
 默认 **启动自动连接**（Legacy TCP + REST `/health`）。Legacy **断线约 250ms 内重连**；若连不上则指数退避至最多 8s。曾在推送页 **SUB** 过的 Topic 会在重连成功后自动再 SUB（及轮询 PING）；可在「连接」页关闭自动连接。局域网联调时将两路主机改为同一 PC IP，端口 **9001 / 8080** 后保存。
 

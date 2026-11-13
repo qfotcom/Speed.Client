@@ -13,7 +13,7 @@ ShadcnAppWindow {
     pageConfig: PageConfig.pages
     navGroups: PageConfig.navGroups
     navGroupOrder: PageConfig.navGroupOrder
-    currentPage: "status"
+    currentPage: "server"
 
     ShadcnSonner {
         id: sonner

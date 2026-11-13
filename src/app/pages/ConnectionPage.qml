@@ -16,7 +16,7 @@ Item {
         id: page
         width: parent.width
         title: qsTr("服务器连接")
-        subtitle: qsTr("Legacy 与 REST 为两条独立通道，主机与端口分别配置（cpolar 下公网域名通常不同）。")
+        subtitle: qsTr("默认生产环境 api.qfot.com：Legacy 9001、REST 8080；局域网联调两路可用同一 IP。")
 
         ShadcnCard {
             Layout.fillWidth: true
@@ -65,7 +65,7 @@ Item {
                         ShadcnLabel { text: qsTr("Legacy 主机") }
                         ShadcnInput {
                             Layout.fillWidth: true
-                            placeholderText: qsTr("1.tcp.cpolar.cn")
+                            placeholderText: qsTr("api.qfot.com")
                             text: ClientBackend.legacyHost
                             onEditingFinished: ClientBackend.legacyHost = text
                         }
@@ -79,7 +79,7 @@ Item {
                             Layout.fillWidth: true
                             text: String(ClientBackend.legacyPort)
                             inputMethodHints: Qt.ImhDigitsOnly
-                            onEditingFinished: ClientBackend.legacyPort = parseInt(text) || 20771
+                            onEditingFinished: ClientBackend.legacyPort = parseInt(text) || 9001
                         }
                     }
                 }
@@ -112,7 +112,7 @@ Item {
                         ShadcnLabel { text: qsTr("REST 主机") }
                         ShadcnInput {
                             Layout.fillWidth: true
-                            placeholderText: qsTr("6.tcp.cpolar.cn")
+                            placeholderText: qsTr("api.qfot.com")
                             text: ClientBackend.restHost
                             onEditingFinished: ClientBackend.restHost = text
                         }
@@ -126,7 +126,7 @@ Item {
                             Layout.fillWidth: true
                             text: String(ClientBackend.restPort)
                             inputMethodHints: Qt.ImhDigitsOnly
-                            onEditingFinished: ClientBackend.restPort = parseInt(text) || 10513
+                            onEditingFinished: ClientBackend.restPort = parseInt(text) || 8080
                         }
                     }
                 }
@@ -191,7 +191,7 @@ Item {
 
                     ShadcnButton {
                         Layout.fillWidth: true
-                        text: qsTr("cpolar 默认")
+                        text: qsTr("生产默认")
                         variant: "outline"
                         iconName: "globe"
                         onClicked: ClientBackend.applyCpolarDefaults()
@@ -234,7 +234,7 @@ Item {
                            : qsTr("Legacy 未连接")
                     description: ClientBackend.legacyConnected
                                  ? qsTr("REST 走 %1，与 Legacy 主机无关。").arg(ClientBackend.restEndpoint)
-                                 : qsTr("请检查两路主机/端口；若仍显示同一旧地址，点「cpolar 默认」。")
+                                 : qsTr("请检查主机与端口；仍显示旧 cpolar 地址时点「生产默认」。")
                 }
             }
         }
