@@ -37,6 +37,18 @@ endif()
 qt_add_executable(SpeedClient ${SPEEDCLIENT_APP_SOURCES})
 set_target_properties(SpeedClient PROPERTIES FOLDER "qtc_runnable")
 
+if(ANDROID)
+    include(FetchContent)
+    FetchContent_Declare(
+        android_openssl
+        DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+        URL https://github.com/KDAB/android_openssl/archive/refs/heads/master.zip
+    )
+    FetchContent_MakeAvailable(android_openssl)
+    include(${android_openssl_SOURCE_DIR}/android_openssl.cmake)
+    add_android_openssl_libraries(SpeedClient)
+endif()
+
 qt_add_qml_module(SpeedClient
     URI "SpeedClient"
     VERSION 1.0
@@ -76,6 +88,7 @@ target_include_directories(SpeedClient PRIVATE
 
 if(MSVC OR ANDROID)
     target_link_libraries(SpeedClient PRIVATE
+        Qt6::Network
         speed_client_sdk
         "$<LINK_LIBRARY:WHOLE_ARCHIVE,SenseAppShell>"
         "$<LINK_LIBRARY:WHOLE_ARCHIVE,SenseDesign>"

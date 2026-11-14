@@ -54,6 +54,7 @@ python tools/gen_speedclient_app_icon.py
 选择 **Qt 6.x for Android arm64-v8a** Kit，构建 **SpeedClient**（Debug 便于签名安装）。
 
 - 包名：`com.speed.client`
+- **HTTPS（REST 443）**：Android 构建会通过 CMake 拉取 [KDAB android_openssl](https://github.com/KDAB/android_openssl) 并把 `libcrypto_3.so` / `libssl_3.so` 打进 APK；首次配置需联网。若 logcat 仍见 `TLS initialization failed`，确认已完整 Deploy 而非只编 `.so`。
 - 局域网：Legacy / REST 主机均填 PC IP（模拟器常用 `10.0.2.2`），端口 **9001 / 8080**（REST 关闭 HTTPS）
 - 跨网：使用默认 `api.qfot.com`（见上表）；归档 cpolar 隧道见 Speed.Server 文档
 

@@ -17,6 +17,7 @@
 #if defined(Q_OS_ANDROID)
 #include "AndroidStartupLog.h"
 #include "AndroidSystemUiBridge.h"
+#include <QSslSocket>
 #include <android/log.h>
 #endif
 
@@ -83,6 +84,7 @@ void androidQtMessageHandler(QtMsgType type, const QMessageLogContext &context, 
 int main(int argc, char *argv[])
 {
 #if defined(Q_OS_ANDROID)
+    qputenv("ANDROID_OPENSSL_SUFFIX", "_3");
     qInstallMessageHandler(androidQtMessageHandler);
     QQuickWindow::setGraphicsApi(QSGRendererInterface::OpenGL);
 #endif
@@ -107,6 +109,7 @@ int main(int argc, char *argv[])
     app.setApplicationVersion(QStringLiteral("0.1.0"));
 
 #if defined(Q_OS_ANDROID)
+    qInfo() << "QSslSocket::supportsSsl():" << QSslSocket::supportsSsl();
     AndroidStartupLog::install(&app);
     QFont appFont(app.font());
     appFont.setPointSize(14);
