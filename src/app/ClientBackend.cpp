@@ -208,8 +208,8 @@ ClientBackend::ClientBackend(QObject *parent)
         }
     });
 
-    // QML 就绪后再连（Main.qml 也会调一次 connectOnStartup）
-    QTimer::singleShot(600, this, &ClientBackend::connectOnStartup);
+    // 下一事件循环即连接（Main.qml callLater 会再调一次，由 startup_connect_done_ 去重）
+    QTimer::singleShot(0, this, &ClientBackend::connectOnStartup);
 }
 
 ClientBackend::~ClientBackend() = default;
@@ -557,9 +557,10 @@ void ClientBackend::runAutoConnect(const QString &reason)
                   .arg(reason, legacyEndpoint(), restEndpoint()));
     manual_legacy_disconnect_ = false;
     ops_metrics_subscribe_pending_ = auto_connect_on_startup_;
-    legacy_->connectToServer();
-    restHealth();
+    // 首屏快照走 REST，与 Legacy TCP 并行；先发出 HTTP 避免与握手抢同一帧
     fetchServerSnapshot();
+    restHealth();
+    legacy_->connectToServer();
 }
 
 void ClientBackend::scheduleAutoReconnect(int delayMs)

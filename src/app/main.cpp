@@ -130,10 +130,6 @@ int main(int argc, char *argv[])
     Q_INIT_RESOURCE(qmake_SenseAppShell);
     Q_INIT_RESOURCE(SenseAppShell_raw_qml_0);
 
-    QQmlApplicationEngine engine;
-    engine.addImportPath(QStringLiteral("qrc:/"));
-    engine.addImportPath(QStringLiteral("qrc:/qt/qml"));
-
     qml_register_types_SenseDesign();
     qml_register_types_SenseAppShell();
 
@@ -141,17 +137,21 @@ int main(int argc, char *argv[])
 #if defined(Q_OS_ANDROID)
     AndroidSystemUiBridge androidSystemUiBridge;
 #endif
+#if defined(Q_OS_WIN)
+    WindowMinimizeBridge windowChromeBridge;
+#else
+    WindowMinimizeBridgeStub windowChromeBridge;
+#endif
+
+    // QML 引擎须先于 backend 析构，否则退出时绑定读到已销毁的 ClientBackend
+    QQmlApplicationEngine engine;
+    engine.addImportPath(QStringLiteral("qrc:/"));
+    engine.addImportPath(QStringLiteral("qrc:/qt/qml"));
 
     engine.rootContext()->setContextProperty(QStringLiteral("ClientBackend"), &backend);
 #if defined(Q_OS_ANDROID)
     engine.rootContext()->setContextProperty(QStringLiteral("AndroidSystemUiBridge"),
                                              &androidSystemUiBridge);
-#endif
-
-#if defined(Q_OS_WIN)
-    WindowMinimizeBridge windowChromeBridge;
-#else
-    WindowMinimizeBridgeStub windowChromeBridge;
 #endif
     engine.rootContext()->setContextProperty(QStringLiteral("WindowMinimizeBridge"),
                                              &windowChromeBridge);

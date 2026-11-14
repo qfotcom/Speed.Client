@@ -13,7 +13,8 @@ Item {
     implicitWidth: width
     implicitHeight: page.implicitHeight
 
-    readonly property bool showPerChannelCharts: !ShadcnAppPlatform.isMobile && width >= 520
+    // 移动端也展示分通道 Step（在「多通道时序」下方滚动可见）；桌面窄窗仍隐藏以免挤爆
+    readonly property bool showPerChannelCharts: ShadcnAppPlatform.isMobile || width >= 520
 
     function statusSeriesForChart() {
         var raw = ClientBackend.statusChartSeries
