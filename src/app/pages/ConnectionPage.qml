@@ -16,7 +16,7 @@ Item {
         id: page
         width: parent.width
         title: qsTr("服务器连接")
-        subtitle: qsTr("默认生产环境 api.qfot.com：Legacy 9001、REST 8080；局域网联调两路可用同一 IP。")
+        subtitle: qsTr("默认生产 api.qfot.com：Legacy 9001、REST 443（HTTPS）；局域网联调同一 IP，端口 9001 / 8080（HTTP）。")
 
         ShadcnCard {
             Layout.fillWidth: true
@@ -126,8 +126,31 @@ Item {
                             Layout.fillWidth: true
                             text: String(ClientBackend.restPort)
                             inputMethodHints: Qt.ImhDigitsOnly
-                            onEditingFinished: ClientBackend.restPort = parseInt(text) || 8080
+                            onEditingFinished: {
+                                var p = parseInt(text)
+                                if (isNaN(p) || p <= 0)
+                                    p = 443
+                                ClientBackend.restPort = p
+                                if (p === 443)
+                                    ClientBackend.restUseHttps = true
+                                else if (p === 8080)
+                                    ClientBackend.restUseHttps = false
+                            }
                         }
+                    }
+                }
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 10
+                    ShadcnSwitch {
+                        checked: ClientBackend.restUseHttps
+                        onToggled: ClientBackend.restUseHttps = checked
+                    }
+                    ShadcnLabel {
+                        Layout.fillWidth: true
+                        wrapMode: Text.WordWrap
+                        text: qsTr("REST 使用 HTTPS（生产 443；局域网联调 8080 请关闭）")
                     }
                 }
 
@@ -223,7 +246,7 @@ Item {
                     wrapMode: Text.WordWrap
                     font.pixelSize: ShadcnTypography.fontSizeXs
                     color: ShadcnTheme.c("muted-foreground")
-                    text: qsTr("启动后自动连 Legacy 并探活 REST。局域网联调：两路主机填同一 PC IP，端口 9001 / 8080。")
+                    text: qsTr("启动后自动连 Legacy 并探活 REST。局域网联调：同一 PC IP，端口 9001 / 8080，并关闭 HTTPS。")
                 }
 
                 ClientStatusAlert {

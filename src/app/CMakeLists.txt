@@ -53,6 +53,7 @@ qt_add_qml_module(SpeedClient
         components/ClientMobilePage.qml
         components/ServerMetricTile.qml
         components/ClientStatusBadge.qml
+        components/ClientValueTierBadge.qml
         components/ClientStatusStepChart.qml
         components/ClientStatusAlert.qml
         components/ClientHttpStatus.js

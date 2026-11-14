@@ -38,6 +38,18 @@ Item {
 
     readonly property bool mobileHeatmap: ShadcnAppPlatform.isMobile
 
+    function opsHeatmapTooltip(dayData, formatLongDate) {
+        var c = dayData && dayData.count !== undefined ? Number(dayData.count) : 0
+        var line
+        if (metricFilter === "requests")
+            line = c === 0 ? qsTr("无请求日增量") : qsTr("请求日增量 %1").arg(c)
+        else if (metricFilter === "events")
+            line = c === 0 ? qsTr("无事件日增量") : qsTr("事件日增量 %1").arg(c)
+        else
+            line = c === 0 ? qsTr("无日增量") : qsTr("日增量 %1").arg(c)
+        return line + " · " + formatLongDate(dayData.date)
+    }
+
     width: parent && parent.width > 0 ? parent.width : 360
     implicitWidth: width
     implicitHeight: page.implicitHeight
@@ -222,6 +234,7 @@ Item {
                 return root.heatmapEntriesForFilter()
             }
             anchorDate: new Date()
+            tooltipFormatter: root.opsHeatmapTooltip
         }
 
         ShadcnChartDeferred {

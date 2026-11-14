@@ -109,6 +109,7 @@ ClientBackend::ClientBackend(QObject *parent)
     rest_host_ = cfg.rest_host;
     legacy_port_ = cfg.legacy_port;
     rest_port_ = cfg.rest_port;
+    rest_use_https_ = cfg.rest_use_https;
     subscribe_topic_ = cfg.subscribe_topic;
     echo_text_ = cfg.echo_text;
     auto_connect_on_startup_ = cfg.auto_connect_on_startup;
@@ -254,7 +255,14 @@ QString ClientBackend::legacyEndpoint() const
 
 QString ClientBackend::restEndpoint() const
 {
-    return QStringLiteral("%1:%2").arg(rest_host_).arg(rest_port_);
+    const QString scheme =
+        rest_use_https_ ? QStringLiteral("https") : QStringLiteral("http");
+    const bool defaultPort = (!rest_use_https_ && rest_port_ == 80)
+                             || (rest_use_https_ && rest_port_ == 443);
+    if (defaultPort) {
+        return QStringLiteral("%1://%2").arg(scheme, rest_host_);
+    }
+    return QStringLiteral("%1://%2:%3").arg(scheme, rest_host_).arg(rest_port_);
 }
 
 int ClientBackend::legacyPort() const
@@ -265,6 +273,11 @@ int ClientBackend::legacyPort() const
 int ClientBackend::restPort() const
 {
     return rest_port_;
+}
+
+bool ClientBackend::restUseHttps() const
+{
+    return rest_use_https_;
 }
 
 bool ClientBackend::autoConnectOnStartup() const
@@ -370,6 +383,17 @@ void ClientBackend::setRestPort(int value)
     rest_port_ = value;
     applyEndpoints();
     Q_EMIT restPortChanged();
+    Q_EMIT restEndpointChanged();
+}
+
+void ClientBackend::setRestUseHttps(bool value)
+{
+    if (rest_use_https_ == value) {
+        return;
+    }
+    rest_use_https_ = value;
+    applyEndpoints();
+    Q_EMIT restUseHttpsChanged();
     Q_EMIT restEndpointChanged();
 }
 
@@ -487,6 +511,7 @@ void ClientBackend::saveSettings()
     cfg.rest_host = rest_host_;
     cfg.legacy_port = static_cast<quint16>(legacy_port_);
     cfg.rest_port = static_cast<quint16>(rest_port_);
+    cfg.rest_use_https = rest_use_https_;
     cfg.subscribe_topic = subscribe_topic_;
     cfg.echo_text = echo_text_;
     cfg.auto_connect_on_startup = auto_connect_on_startup_;
@@ -645,6 +670,7 @@ void ClientBackend::applyCpolarDefaults()
     setRestHost(cfg.rest_host);
     setLegacyPort(cfg.legacy_port);
     setRestPort(cfg.rest_port);
+    setRestUseHttps(cfg.rest_use_https);
     saveSettings();
     appendLog(QStringLiteral("[配置] 已恢复生产默认端点（%1）").arg(cfg.legacy_host));
     Q_EMIT toastRequested(
@@ -670,7 +696,7 @@ void ClientBackend::appendLog(const QString &line)
 void ClientBackend::applyEndpoints()
 {
     legacy_->setEndpoint(legacy_host_, static_cast<quint16>(legacy_port_));
-    rest_->setEndpoint(rest_host_, static_cast<quint16>(rest_port_));
+    rest_->setEndpoint(rest_host_, static_cast<quint16>(rest_port_), rest_use_https_);
 }
 
 QStringList ClientBackend::statusChartCategories() const

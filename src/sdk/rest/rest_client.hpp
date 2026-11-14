@@ -17,12 +17,13 @@ public:
 
     QString host() const;
     quint16 port() const;
+    bool useTls() const;
     bool isBusy() const;
     bool isSnapshotBusy() const;
     bool isHistoryBusy() const;
 
 public Q_SLOTS:
-    void setEndpoint(const QString &host, quint16 port);
+    void setEndpoint(const QString &host, quint16 port, bool useTls = false);
     void fetchHealth();
     void fetchEcho(const QString &text);
     void fetchOpsSnapshot();
@@ -32,6 +33,7 @@ public Q_SLOTS:
 Q_SIGNALS:
     void hostChanged();
     void portChanged();
+    void useTlsChanged();
     void busyChanged();
     void snapshotBusyChanged();
     void historyBusyChanged();
@@ -49,7 +51,8 @@ private:
 
     QNetworkAccessManager *nam_{nullptr};
     QString host_{QStringLiteral("127.0.0.1")};
-    quint16 port_{8080};
+    quint16 port_{443};
+    bool use_tls_{true};
     bool busy_{false};
     bool snapshot_busy_{false};
     int history_inflight_{0};

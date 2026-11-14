@@ -26,6 +26,7 @@ class ClientBackend : public QObject
     Q_PROPERTY(QString restEndpoint READ restEndpoint NOTIFY restEndpointChanged)
     Q_PROPERTY(int legacyPort READ legacyPort WRITE setLegacyPort NOTIFY legacyPortChanged)
     Q_PROPERTY(int restPort READ restPort WRITE setRestPort NOTIFY restPortChanged)
+    Q_PROPERTY(bool restUseHttps READ restUseHttps WRITE setRestUseHttps NOTIFY restUseHttpsChanged)
     Q_PROPERTY(bool autoConnectOnStartup READ autoConnectOnStartup WRITE setAutoConnectOnStartup
                    NOTIFY autoConnectOnStartupChanged)
     Q_PROPERTY(QString subscribeTopic READ subscribeTopic WRITE setSubscribeTopic NOTIFY
@@ -88,6 +89,7 @@ public:
     QString restEndpoint() const;
     int legacyPort() const;
     int restPort() const;
+    bool restUseHttps() const;
     bool autoConnectOnStartup() const;
     QString subscribeTopic() const;
     QString echoText() const;
@@ -137,6 +139,7 @@ public:
     void setRestHost(const QString &value);
     void setLegacyPort(int value);
     void setRestPort(int value);
+    void setRestUseHttps(bool value);
     void setAutoConnectOnStartup(bool value);
     void setSubscribeTopic(const QString &value);
     void setEchoText(const QString &value);
@@ -154,7 +157,7 @@ public:
     Q_INVOKABLE void clearLog();
     /** Legacy 连接 + REST /health（启动与手动「立即连接」共用） */
     Q_INVOKABLE void connectOnStartup();
-    /** 恢复生产环境默认（api.qfot.com / 9001 / 8080）并保存 */
+    /** 恢复生产环境默认（api.qfot.com / 9001 / REST 443 HTTPS）并保存 */
     Q_INVOKABLE void applyCpolarDefaults();
     Q_INVOKABLE void clearStatusHistory();
     Q_INVOKABLE void fetchServerSnapshot();
@@ -167,6 +170,7 @@ Q_SIGNALS:
     void restEndpointChanged();
     void legacyPortChanged();
     void restPortChanged();
+    void restUseHttpsChanged();
     void autoConnectOnStartupChanged();
     void subscribeTopicChanged();
     void echoTextChanged();
@@ -230,7 +234,8 @@ private:
     QString legacy_host_;
     QString rest_host_;
     int legacy_port_{9001};
-    int rest_port_{8080};
+    int rest_port_{443};
+    bool rest_use_https_{true};
     bool auto_connect_on_startup_{true};
     bool manual_legacy_disconnect_{false};
     bool startup_connect_done_{false};

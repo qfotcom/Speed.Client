@@ -21,7 +21,24 @@ quint16 ClientSettings::defaultLegacyPort()
 
 quint16 ClientSettings::defaultRestPort()
 {
-    return 8080;
+    return 443;
+}
+
+bool ClientSettings::defaultRestUseHttps()
+{
+    return true;
+}
+
+static bool inferRestUseHttps(quint16 restPort, const QString &restHost)
+{
+    if (restPort == 443) {
+        return true;
+    }
+    if (restPort == 8080) {
+        return false;
+    }
+    return restPort == ClientSettings::defaultRestPort()
+            && restHost == ClientSettings::defaultRestHost();
 }
 
 static bool isLanPortPair(quint16 legacyPort, quint16 restPort)
@@ -90,6 +107,18 @@ ClientSettings ClientSettings::load()
     cfg.rest_port = lanFromOldHost ? savedRestPort : static_cast<quint16>(
         settings.value(QStringLiteral("rest_port"), defaultRestPort()).toUInt());
 
+    if (settings.contains(QStringLiteral("rest_use_https"))) {
+        cfg.rest_use_https = settings.value(QStringLiteral("rest_use_https")).toBool();
+    } else {
+        cfg.rest_use_https = inferRestUseHttps(cfg.rest_port, cfg.rest_host);
+    }
+
+    if (cfg.rest_host == defaultRestHost() && cfg.rest_port == 8080) {
+        cfg.rest_port = defaultRestPort();
+        cfg.rest_use_https = true;
+        cfg.save();
+    }
+
     cfg.subscribe_topic =
         settings.value(QStringLiteral("subscribe_topic"), QStringLiteral("quote.test"))
             .toString();
@@ -104,6 +133,7 @@ ClientSettings ClientSettings::load()
         cfg.rest_host = prod.rest_host;
         cfg.legacy_port = prod.legacy_port;
         cfg.rest_port = prod.rest_port;
+        cfg.rest_use_https = prod.rest_use_https;
         cfg.save();
     }
 
@@ -118,6 +148,7 @@ void ClientSettings::save() const
     settings.remove(QStringLiteral("host"));
     settings.setValue(QStringLiteral("legacy_port"), legacy_port);
     settings.setValue(QStringLiteral("rest_port"), rest_port);
+    settings.setValue(QStringLiteral("rest_use_https"), rest_use_https);
     settings.setValue(QStringLiteral("subscribe_topic"), subscribe_topic);
     settings.setValue(QStringLiteral("echo_text"), echo_text);
     settings.setValue(QStringLiteral("auto_connect_on_startup"), auto_connect_on_startup);
@@ -132,6 +163,7 @@ ClientSettings ClientSettings::productionDefaults()
     cfg.rest_host = defaultRestHost();
     cfg.legacy_port = defaultLegacyPort();
     cfg.rest_port = defaultRestPort();
+    cfg.rest_use_https = defaultRestUseHttps();
     return cfg;
 }
 

@@ -76,11 +76,13 @@ Item {
                         reserveActivitySlot: ClientBackend.serverOpsStreamActive
                         activity: ClientBackend.serverOpsStreamActive
                     }
-                    ClientStatusBadge {
+                    ClientValueTierBadge {
+                        id: legacyPingBadge
+                        value: ClientBackend.legacyPingRttMs
+                        pending: !ClientBackend.legacyConnected || ClientBackend.legacyPingRttMs < 0
                         text: ClientBackend.legacyPingRttMs >= 0
                               ? qsTr("Ping %1 ms").arg(ClientBackend.legacyPingRttMs)
                               : qsTr("Ping …")
-                        tone: ClientBackend.legacyPingTone
                     }
                     ClientStatusBadge {
                         visible: ClientBackend.serverProcessRssDetail.length > 0
@@ -296,9 +298,7 @@ Item {
                                   ? (ClientBackend.legacyPingRttMs + " ms")
                                   : "—"
                             font.weight: ShadcnTypography.fontWeightSemibold
-                            color: ClientBackend.legacyPingTone === "danger"
-                                   ? ShadcnTheme.c("destructive")
-                                   : ShadcnTheme.c("foreground")
+                            color: legacyPingBadge.valueForeground
                         }
                     }
                     ShadcnLabel {

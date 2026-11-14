@@ -54,7 +54,7 @@ python tools/gen_speedclient_app_icon.py
 选择 **Qt 6.x for Android arm64-v8a** Kit，构建 **SpeedClient**（Debug 便于签名安装）。
 
 - 包名：`com.speed.client`
-- 局域网：Legacy / REST 主机均填 PC IP（模拟器常用 `10.0.2.2`），端口 **9001 / 8080**
+- 局域网：Legacy / REST 主机均填 PC IP（模拟器常用 `10.0.2.2`），端口 **9001 / 8080**（REST 关闭 HTTPS）
 - 跨网：使用默认 `api.qfot.com`（见上表）；归档 cpolar 隧道见 Speed.Server 文档
 
 **服务端**：Legacy/REST 需监听 `0.0.0.0`。
@@ -90,11 +90,11 @@ powershell -File tools/android_debug_debug.ps1 -Serial <device>
 | 通道 | 主机 | 端口 |
 |------|------|------|
 | Legacy | `api.qfot.com` | 9001 |
-| REST | `api.qfot.com` | 8080 |
+| REST | `api.qfot.com` | 443（HTTPS，nginx 反代） |
 
 侧栏 **服务端**：`SUB ops.host.metrics` 收 **Legacy 流式** 独立帧 PUSH；展示 CPU/内存 **GB** 与 **系统盘、数据盘**（`host.disk.*`）；**Legacy PING 往返延迟**（约 2s 刷新，本机指标非服务端 snapshot）；REST 仅首屏校准。
 
-默认 **启动自动连接**（Legacy TCP + REST `/health`）。Legacy **断线约 250ms 内重连**；若连不上则指数退避至最多 8s。曾在推送页 **SUB** 过的 Topic 会在重连成功后自动再 SUB（及轮询 PING）；可在「连接」页关闭自动连接。局域网联调时将两路主机改为同一 PC IP，端口 **9001 / 8080** 后保存。
+默认 **启动自动连接**（Legacy TCP + REST `GET /health` over HTTPS）。Legacy **断线约 250ms 内重连**；若连不上则指数退避至最多 8s。曾在推送页 **SUB** 过的 Topic 会在重连成功后自动再 SUB（及轮询 PING）；可在「连接」页关闭自动连接。局域网联调时将两路主机改为同一 PC IP，端口 **9001 / 8080**，REST **关闭 HTTPS** 后保存。
 
 若界面仍显示旧版「单个主机」表单，请 **完整重新编译并安装**（Android 建议先卸载旧 APK 或 bump 安装），确保 `ClientBackend.legacyHost` / `restHost` 与新 QML 一并打进包内。
 

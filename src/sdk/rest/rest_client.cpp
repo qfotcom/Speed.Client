@@ -22,6 +22,11 @@ quint16 RestClient::port() const
     return port_;
 }
 
+bool RestClient::useTls() const
+{
+    return use_tls_;
+}
+
 bool RestClient::isBusy() const
 {
     return busy_;
@@ -47,7 +52,7 @@ void RestClient::setHistoryBusy(bool value)
     Q_EMIT historyBusyChanged();
 }
 
-void RestClient::setEndpoint(const QString &host, quint16 port)
+void RestClient::setEndpoint(const QString &host, quint16 port, bool useTls)
 {
     if (host_ != host) {
         host_ = host;
@@ -56,6 +61,10 @@ void RestClient::setEndpoint(const QString &host, quint16 port)
     if (port_ != port) {
         port_ = port;
         Q_EMIT portChanged();
+    }
+    if (use_tls_ != useTls) {
+        use_tls_ = useTls;
+        Q_EMIT useTlsChanged();
     }
 }
 
@@ -193,7 +202,7 @@ void RestClient::fetchEcho(const QString &text)
 QUrl RestClient::buildUrl(const QString &path, const QUrlQuery &query) const
 {
     QUrl url;
-    url.setScheme(QStringLiteral("http"));
+    url.setScheme(use_tls_ ? QStringLiteral("https") : QStringLiteral("http"));
     url.setHost(host_);
     url.setPort(port_);
     url.setPath(path);
