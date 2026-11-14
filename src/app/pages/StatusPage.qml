@@ -9,6 +9,8 @@ Item {
     property string pageId: "status"
     /** 分通道图 X 轴类目（与多通道图同步，避免 delegate 里每次调函数） */
     property var statusCategoriesCached: []
+    property var statusHoverLabelsCached: []
+    readonly property var statusSlotCategories: ["s0", "s1", "s2", "s3", "s4"]
     /** ListModel 不支持 color / 数组 role；用固定数量 Repeater + 缓存行数据 */
     property var channelSeriesCache: []
 
@@ -45,17 +47,13 @@ Item {
                                          }]
     }
 
-    function statusCategoriesForChart() {
-        var cats = ClientBackend.statusChartCategories
-        return cats && cats.length > 0 ? cats : [qsTr("—")]
-    }
-
     function applyStatusCharts() {
         var series = statusSeriesForChart()
-        var categories = statusCategoriesForChart()
         statusChart.series = series
-        statusChart.categories = categories
-        statusCategoriesCached = categories
+        statusChart.categoryAxisLabels = ClientBackend.statusChartAxisLabels
+        statusChart.categoryHoverLabels = ClientBackend.statusChartHoverLabels
+        statusCategoriesCached = ClientBackend.statusChartAxisLabels
+        statusHoverLabelsCached = ClientBackend.statusChartHoverLabels
         channelSeriesCache = series
     }
 
@@ -63,7 +61,8 @@ Item {
         id: page
         width: parent.width
         title: qsTr("客户端通道")
-        subtitle: qsTr("Step 阶梯线展示各通道开关量，点按曲线可看时间与状态。")
+        subtitle: qsTr("最近 %1 秒滑动窗，每秒采样；点按曲线查看该时刻各通道。")
+            .arg(ClientBackend.statusHistorySeconds)
 
         ShadcnCard {
             Layout.fillWidth: true
@@ -108,11 +107,15 @@ Item {
 
         ClientStatusStepChart {
             id: statusChart
+            categories: root.statusSlotCategories
+            categoryHoverLabels: ClientBackend.statusChartHoverLabels
+            categoryAxisLabels: ClientBackend.statusChartAxisLabels
             Layout.fillWidth: true
             Layout.preferredHeight: implicitHeight > 0 ? implicitHeight : 280
             title: qsTr("多通道时序")
             description: qsTr("图例为通道名称；Y 轴 0 / 100 表示关 / 开")
-            footerText: qsTr("Legacy 断线重连为阶跃；传输线为短时脉冲。")
+            footerText: qsTr("固定 %1 格：新秒在右侧进入，满窗后左侧滑出；在线多为 100 平线。")
+                .arg(ClientBackend.statusHistorySeconds)
         }
 
         ShadcnCard {
@@ -146,12 +149,14 @@ Item {
                                 required property int index
                                 readonly property var row: root.channelSeriesCache[index]
                                 width: channelColumn.width
+                                categories: root.statusSlotCategories
+                                categoryHoverLabels: ClientBackend.statusChartHoverLabels
+                                categoryAxisLabels: ClientBackend.statusChartAxisLabels
                                 immediatePlot: true
                                 title: row ? row.label : ""
                                 seriesLabel: row ? row.label : ""
                                 seriesColor: row ? row.color : ShadcnTheme.c("chart-1")
                                 values: row && row.values ? row.values : [0]
-                                categories: root.statusCategoriesCached
                                 description: ""
                                 showLegend: false
                             }

@@ -120,12 +120,17 @@ void LegacyClient::setOpsPushPollEnabled(bool enabled)
 
 void LegacyClient::updatePollTimer()
 {
-    const bool wantPoll = user_push_poll_ || ops_push_poll_;
-    if (!wantPoll || !connected_) {
+    if (!connected_) {
         poll_timer_->stop();
         return;
     }
-    poll_timer_->setInterval(ops_push_poll_ ? 1000 : 1500);
+    int intervalMs = 2000;
+    if (ops_push_poll_) {
+        intervalMs = 1000;
+    } else if (user_push_poll_) {
+        intervalMs = 1500;
+    }
+    poll_timer_->setInterval(intervalMs);
     if (!poll_timer_->isActive()) {
         poll_timer_->start();
     }
@@ -136,6 +141,11 @@ void LegacyClient::onConnected()
     setConnected(true);
     updatePollTimer();
     flushWriteQueue();
+    QTimer::singleShot(200, this, [this]() {
+        if (connected_ && !busy_) {
+            sendLine(QStringLiteral("PING"));
+        }
+    });
 }
 
 void LegacyClient::onDisconnected()

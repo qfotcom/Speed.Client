@@ -32,6 +32,8 @@ ShadcnCard {
             return "default"
         if (line.indexOf("[PUSH]") >= 0)
             return "push"
+        if (line.indexOf("[PING]") >= 0 || line.indexOf("→ PING") >= 0)
+            return "legacy"
         if (line.indexOf("ERR]") >= 0 || line.indexOf("[REST ERR]") >= 0 || line.indexOf("[Legacy ERR]") >= 0)
             return "error"
         if (line.indexOf("[REST") >= 0)

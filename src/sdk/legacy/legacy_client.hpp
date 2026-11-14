@@ -28,8 +28,9 @@ public Q_SLOTS:
     void connectToServer();
     void disconnectFromServer();
     void sendLine(const QString &line);
+    /** 推送页轮询：连接后周期 PING 间隔 1.5s（未开时统一 2s keepalive 测 RTT） */
     void setPushPollEnabled(bool enabled);
-    /** Workflow 下 PUSH 随 PING/响应捎带；订阅 ops 等 topic 时需开启 */
+    /** ops 流式订阅时周期 PING 1s，PUSH 随响应捎带 */
     void setOpsPushPollEnabled(bool enabled);
 
 Q_SIGNALS:

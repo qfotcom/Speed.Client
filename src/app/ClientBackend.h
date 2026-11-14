@@ -46,6 +46,10 @@ class ClientBackend : public QObject
     /** Step 图：时间类目 + 多路 0/1 序列（供 ShadcnChart series / categories） */
     Q_PROPERTY(QStringList statusChartCategories READ statusChartCategories NOTIFY
                    statusChartChanged)
+    Q_PROPERTY(QStringList statusChartAxisLabels READ statusChartAxisLabels NOTIFY
+                   statusChartChanged)
+    Q_PROPERTY(QStringList statusChartHoverLabels READ statusChartHoverLabels NOTIFY
+                   statusChartChanged)
     Q_PROPERTY(QVariantList statusChartSeries READ statusChartSeries NOTIFY statusChartChanged)
     Q_PROPERTY(int statusHistorySeconds READ statusHistorySeconds CONSTANT)
     Q_PROPERTY(bool serverSnapshotBusy READ serverSnapshotBusy NOTIFY serverSnapshotBusyChanged)
@@ -103,6 +107,8 @@ public:
     QString lastLegacyLine() const;
     QStringList eventLog() const;
     QStringList statusChartCategories() const;
+    QStringList statusChartAxisLabels() const;
+    QStringList statusChartHoverLabels() const;
     QVariantList statusChartSeries() const;
     int statusHistorySeconds() const;
     bool serverSnapshotBusy() const;
@@ -198,8 +204,7 @@ private:
     void updateDashboardTotalsFromMetrics(const QJsonArray &metrics);
     void subscribeOpsMetrics();
     void restoreOpsMetricsSubscription();
-    void startLegacyPingProbe();
-    void stopLegacyPingProbe();
+    void resetLegacyPingRtt();
     static QVariant metricValue(const QJsonArray &metrics, const QString &id);
     static QString formatBytes(qint64 bytes);
     static QString formatUsedTotalBytes(qint64 usedBytes, qint64 totalBytes);
@@ -221,15 +226,14 @@ private:
     static constexpr int kReconnectDelaySessionLostMs = 250;
     static constexpr int kReconnectBackoffInitialMs = 500;
     static constexpr int kReconnectBackoffMaxMs = 8000;
-    static constexpr int kStatusHistoryMax = 120;
+    /** 仅保留最近 5 个 1s 采样，绘图与内存均为 5s 滑动窗 */
+    static constexpr int kStatusHistoryMax = 5;
     static constexpr int kStatusSampleIntervalMs = 1000;
-    static constexpr int kStatusPlotMaxPoints = 40;
-    static constexpr int kStatusAxisLabelCount = 4;
+    static constexpr int kStatusPlotMaxPoints = kStatusHistoryMax;
     speed::client::legacy::LegacyClient *legacy_{nullptr};
     speed::client::rest::RestClient *rest_{nullptr};
     QTimer *reconnect_timer_{nullptr};
     QTimer *status_sample_timer_{nullptr};
-    QTimer *legacy_ping_timer_{nullptr};
 
     QString legacy_host_;
     QString rest_host_;
@@ -262,6 +266,7 @@ private:
     QVector<double> plot_push_poll_;
     QVector<double> plot_subscription_;
     QVariantList status_chart_series_;
+    QStringList status_slot_categories_;
 
     bool server_snapshot_ready_{false};
     QString server_snapshot_error_;
