@@ -188,6 +188,9 @@ ClientBackend::ClientBackend(QObject *parent)
     connect(rest_, &speed::client::rest::RestClient::errorOccurred, this,
             [this](const QString &msg) {
                 appendLog(QStringLiteral("[REST ERR] %1").arg(msg));
+                if (msg.endsWith(QStringLiteral("请求进行中"))) {
+                    return;
+                }
                 Q_EMIT toastRequested(msg, QStringLiteral("error"));
             });
     connect(rest_, &speed::client::rest::RestClient::healthReceived, this,
@@ -922,6 +925,9 @@ bool ClientBackend::serverHasDataDisk() const
 
 void ClientBackend::fetchServerSnapshot()
 {
+    if (rest_->isSnapshotBusy()) {
+        return;
+    }
     rest_->fetchOpsSnapshot();
 }
 

@@ -36,6 +36,8 @@ Item {
         : metricFilter === "events" ? qsTr("事件活跃度 · 全年日增量")
         : qsTr("请求 + 事件活跃度 · 全年日增量")
 
+    readonly property bool mobileHeatmap: ShadcnAppPlatform.isMobile
+
     width: parent && parent.width > 0 ? parent.width : 360
     implicitWidth: width
     implicitHeight: page.implicitHeight
@@ -200,9 +202,12 @@ Item {
             height: implicitHeight
             showSourceFilter: true
             filterEntriesBySource: false
-            passWheelToPage: true
-            fitToWidth: true
-            maxCellSize: 0
+            /** 手机放不下 53 周：固定格宽 + 横向滑；默认从年初列开始，避免只看到少量月份 */
+            fitToWidth: !root.mobileHeatmap
+            passWheelToPage: !root.mobileHeatmap
+            cellSize: root.mobileHeatmap ? 8 : 12
+            pinRecent: false
+            maxCellSize: root.mobileHeatmap ? 8 : 0
             caption: root.heatmapCaption
             filterSegments: root.heatmapFilterSegments
             sourceFilter: root.metricFilter

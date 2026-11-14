@@ -88,7 +88,6 @@ void RestClient::fetchHealth()
 void RestClient::fetchOpsSnapshot()
 {
     if (snapshot_busy_) {
-        Q_EMIT errorOccurred(QStringLiteral("Ops snapshot 请求进行中"));
         return;
     }
     snapshot_busy_ = true;
