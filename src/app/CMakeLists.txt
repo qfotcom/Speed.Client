@@ -46,6 +46,7 @@ qt_add_qml_module(SpeedClient
         page-config.js
         pages/ConnectionPage.qml
         pages/ServerStatusPage.qml
+        pages/OpsDashboardPage.qml
         pages/StatusPage.qml
         pages/RestPage.qml
         pages/LegacyPage.qml

@@ -71,6 +71,12 @@ class ClientBackend : public QObject
     Q_PROPERTY(int legacyPingRttMs READ legacyPingRttMs NOTIFY legacyPingRttChanged)
     Q_PROPERTY(QString legacyPingLabel READ legacyPingLabel NOTIFY legacyPingRttChanged)
     Q_PROPERTY(QString legacyPingTone READ legacyPingTone NOTIFY legacyPingRttChanged)
+    Q_PROPERTY(QString dashboardRequestsTotal READ dashboardRequestsTotal NOTIFY opsDashboardChanged)
+    Q_PROPERTY(QString dashboardEventsTotal READ dashboardEventsTotal NOTIFY opsDashboardChanged)
+    Q_PROPERTY(QVariantList opsHeatmapDays READ opsHeatmapDays NOTIFY opsDashboardChanged)
+    Q_PROPERTY(bool opsDashboardBusy READ opsDashboardBusy NOTIFY opsDashboardChanged)
+    Q_PROPERTY(QString opsDashboardError READ opsDashboardError NOTIFY opsDashboardChanged)
+    Q_PROPERTY(bool opsHeatmapReady READ opsHeatmapReady NOTIFY opsDashboardChanged)
 
 public:
     explicit ClientBackend(QObject *parent = nullptr);
@@ -120,6 +126,12 @@ public:
     int legacyPingRttMs() const;
     QString legacyPingLabel() const;
     QString legacyPingTone() const;
+    QString dashboardRequestsTotal() const;
+    QString dashboardEventsTotal() const;
+    QVariantList opsHeatmapDays() const;
+    bool opsDashboardBusy() const;
+    QString opsDashboardError() const;
+    bool opsHeatmapReady() const;
 
     void setLegacyHost(const QString &value);
     void setRestHost(const QString &value);
@@ -146,6 +158,7 @@ public:
     Q_INVOKABLE void applyCpolarDefaults();
     Q_INVOKABLE void clearStatusHistory();
     Q_INVOKABLE void fetchServerSnapshot();
+    Q_INVOKABLE void refreshOpsDashboard();
 
 Q_SIGNALS:
     void legacyHostChanged();
@@ -172,10 +185,13 @@ Q_SIGNALS:
     void serverOpsStreamChanged();
     void legacyPingRttChanged();
     void toastRequested(const QString &message, const QString &level);
+    void opsDashboardChanged();
 
 private:
     void parseOpsSnapshotPayload(const QString &body, int httpStatus);
     void applyOpsSnapshotJson(const QString &body, const QString &source);
+    void parseOpsHeatmapPayload(const QString &body, int httpStatus);
+    void updateDashboardTotalsFromMetrics(const QJsonArray &metrics);
     void subscribeOpsMetrics();
     void restoreOpsMetricsSubscription();
     void startLegacyPingProbe();
@@ -264,4 +280,11 @@ private:
     bool ops_metrics_subscribe_pending_{true};
     bool ops_metrics_stream_active_{false};
     int legacy_ping_rtt_ms_{-1};
+
+    QString dashboard_requests_total_{QStringLiteral("—")};
+    QString dashboard_events_total_{QStringLiteral("—")};
+    QVariantList ops_heatmap_days_;
+    bool ops_heatmap_ready_{false};
+    QString ops_dashboard_error_;
+    bool ops_dashboard_refresh_pending_{false};
 };

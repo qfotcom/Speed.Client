@@ -2,6 +2,7 @@
 
 #include <QtMath>
 
+#include <QDate>
 #include <QDateTime>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -79,6 +80,21 @@ QList<int> buildPlotIndices(int count, int maxPoints, const QVector<QVector<doub
     }
 
     return indices;
+}
+
+QString formatCountMetric(double n)
+{
+    if (!qIsFinite(n)) {
+        return QStringLiteral("—");
+    }
+    const qint64 whole = static_cast<qint64>(qRound64(n));
+    if (whole >= 1'000'000) {
+        return QStringLiteral("%1M").arg(n / 1'000'000.0, 0, 'f', 1);
+    }
+    if (whole >= 10'000) {
+        return QStringLiteral("%1K").arg(n / 1'000.0, 0, 'f', 1);
+    }
+    return QString::number(whole);
 }
 
 } // namespace
@@ -192,6 +208,10 @@ ClientBackend::ClientBackend(QObject *parent)
     connect(rest_, &speed::client::rest::RestClient::opsSnapshotReceived, this,
             [this](const QString &body, int status) {
                 parseOpsSnapshotPayload(body, status);
+            });
+    connect(rest_, &speed::client::rest::RestClient::opsHistoryHeatmapReceived, this,
+            [this](const QString &body, int status) {
+                parseOpsHeatmapPayload(body, status);
             });
 
     status_sample_timer_ = new QTimer(this);
@@ -1016,9 +1036,11 @@ void ClientBackend::applyOpsSnapshotJson(const QString &body, const QString &sou
     server_platform_label_ = os.isEmpty() ? arch : QStringLiteral("%1 · %2").arg(os, arch);
 
     const QVariant cpuVar = metricValue(metrics, QStringLiteral("host.cpu.utilization_pct"));
-    server_cpu_percent_ = cpuVar.isNull() || !cpuVar.isValid()
-                              ? kInvalidMetric
-                              : cpuVar.toDouble();
+    if (cpuVar.isNull() || !cpuVar.isValid()) {
+        server_cpu_percent_ = kInvalidMetric;
+    } else {
+        server_cpu_percent_ = qBound(0.0, cpuVar.toDouble(), 100.0);
+    }
 
     const qint64 memTotal =
         metricValue(metrics, QStringLiteral("host.mem.total_bytes")).toLongLong();
@@ -1078,7 +1100,14 @@ void ClientBackend::applyOpsSnapshotJson(const QString &body, const QString &sou
         if (!v.isValid() || v.isNull()) {
             return QStringLiteral("—");
         }
-        return QString::number(v.toDouble(), 'f', v.toDouble() >= 10 ? 0 : 1);
+        const double n = v.toDouble();
+        const bool countLike = id.startsWith(QStringLiteral("framework."))
+                               && (id.endsWith(QStringLiteral("_total"))
+                                   || id == QStringLiteral("framework.connections.active"));
+        if (countLike) {
+            return formatCountMetric(n);
+        }
+        return QString::number(n, 'f', n >= 10 ? 0 : 1);
     };
 
     server_ops_tiles_.clear();
@@ -1100,7 +1129,9 @@ void ClientBackend::applyOpsSnapshotJson(const QString &body, const QString &sou
              QStringLiteral("自进程启动"));
     pushTile(QStringLiteral("radio-tower"), QStringLiteral("事件发布"),
              metricNumber(QStringLiteral("framework.events.published_total")),
-             QStringLiteral("EventBus"));
+             QStringLiteral("含 ops.host.metrics 推送"));
+
+    updateDashboardTotalsFromMetrics(metrics);
     pushTile(QStringLiteral("refresh-cw"), QStringLiteral("配置热加载"),
              metricNumber(QStringLiteral("framework.config.reloads_total")),
              QStringLiteral("reload 次数"));
@@ -1133,4 +1164,116 @@ void ClientBackend::applyOpsSnapshotJson(const QString &body, const QString &sou
         appendLog(QStringLiteral("[%1 snapshot] %2 指标").arg(source).arg(server_ops_tiles_.size()));
     }
     Q_EMIT serverSnapshotChanged();
+}
+
+QString ClientBackend::dashboardRequestsTotal() const
+{
+    return dashboard_requests_total_;
+}
+
+QString ClientBackend::dashboardEventsTotal() const
+{
+    return dashboard_events_total_;
+}
+
+QVariantList ClientBackend::opsHeatmapDays() const
+{
+    return ops_heatmap_days_;
+}
+
+bool ClientBackend::opsDashboardBusy() const
+{
+    return ops_dashboard_refresh_pending_ || rest_->isHistoryBusy();
+}
+
+QString ClientBackend::opsDashboardError() const
+{
+    return ops_dashboard_error_;
+}
+
+bool ClientBackend::opsHeatmapReady() const
+{
+    return ops_heatmap_ready_;
+}
+
+void ClientBackend::refreshOpsDashboard()
+{
+    ops_dashboard_error_.clear();
+    ops_dashboard_refresh_pending_ = true;
+    Q_EMIT opsDashboardChanged();
+
+    if (!server_snapshot_ready_ && !serverSnapshotBusy()) {
+        fetchServerSnapshot();
+    }
+    rest_->fetchOpsHistoryHeatmap(QDate::currentDate().year());
+}
+
+void ClientBackend::updateDashboardTotalsFromMetrics(const QJsonArray &metrics)
+{
+    auto countFromMetric = [&](const QString &id) -> QString {
+        const QVariant v = metricValue(metrics, id);
+        if (!v.isValid() || v.isNull()) {
+            return QStringLiteral("—");
+        }
+        return formatCountMetric(v.toDouble());
+    };
+
+    dashboard_requests_total_ = countFromMetric(QStringLiteral("framework.requests.total"));
+    dashboard_events_total_ =
+        countFromMetric(QStringLiteral("framework.events.published_total"));
+    Q_EMIT opsDashboardChanged();
+}
+
+void ClientBackend::parseOpsHeatmapPayload(const QString &body, int httpStatus)
+{
+    ops_dashboard_refresh_pending_ = false;
+
+    if (httpStatus < 200 || httpStatus >= 300 || body.isEmpty()) {
+        ops_heatmap_ready_ = false;
+        ops_dashboard_error_ = httpStatus == 503
+                                   ? QStringLiteral("服务端未开启 ops.history")
+                                   : (httpStatus > 0 ? QStringLiteral("HTTP %1").arg(httpStatus)
+                                                     : QStringLiteral("无法读取热力图数据"));
+        appendLog(QStringLiteral("[REST /api/v1/ops/history/heatmap] %1").arg(ops_dashboard_error_));
+        Q_EMIT opsDashboardChanged();
+        return;
+    }
+
+    QJsonParseError parseError;
+    const QJsonDocument doc = QJsonDocument::fromJson(body.toUtf8(), &parseError);
+    if (parseError.error != QJsonParseError::NoError || !doc.isObject()) {
+        ops_heatmap_ready_ = false;
+        ops_dashboard_error_ = QStringLiteral("热力图 JSON 解析失败");
+        Q_EMIT opsDashboardChanged();
+        return;
+    }
+
+    const QJsonArray days = doc.object().value(QStringLiteral("days")).toArray();
+    QVariantList parsed;
+    parsed.reserve(days.size());
+    for (const QJsonValue &item : days) {
+        const QJsonObject row = item.toObject();
+        const QString date = row.value(QStringLiteral("date")).toString();
+        if (date.isEmpty()) {
+            continue;
+        }
+        parsed.append(QVariantMap{
+            {QStringLiteral("date"), date},
+            {QStringLiteral("requests"),
+             row.value(QStringLiteral("requests")).toVariant().toULongLong()},
+            {QStringLiteral("events_published"),
+             row.value(QStringLiteral("events_published")).toVariant().toULongLong()},
+        });
+    }
+
+    std::sort(parsed.begin(), parsed.end(), [](const QVariant &a, const QVariant &b) {
+        return a.toMap().value(QStringLiteral("date")).toString()
+               < b.toMap().value(QStringLiteral("date")).toString();
+    });
+
+    ops_heatmap_days_ = parsed;
+    ops_heatmap_ready_ = true;
+    ops_dashboard_error_.clear();
+    appendLog(QStringLiteral("[REST heatmap] %1 天").arg(ops_heatmap_days_.size()));
+    Q_EMIT opsDashboardChanged();
 }

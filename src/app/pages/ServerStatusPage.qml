@@ -21,7 +21,7 @@ Item {
         id: page
         width: parent.width
         title: qsTr("服务器状态")
-        subtitle: qsTr("Legacy 流式：SUB ops.host.metrics 后服务端独立帧推送；REST 仅首屏校准。")
+        subtitle: qsTr("Legacy 流式：SUB ops.host.metrics 后服务端有变才 PUSH；REST 为当场采样校准。")
 
         ShadcnCard {
             Layout.fillWidth: true

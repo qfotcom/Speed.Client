@@ -19,6 +19,13 @@ var pages = [
         component: "ServerStatusPage.qml"
     },
     {
+        id: "dashboard",
+        name: "看板",
+        group: "client",
+        icon: "layout-grid",
+        component: "OpsDashboardPage.qml"
+    },
+    {
         id: "status",
         name: "通道",
         group: "client",

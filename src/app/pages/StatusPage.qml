@@ -7,14 +7,16 @@ import "../components"
 Item {
     id: root
     property string pageId: "status"
-    property int chartRevision: 0
+    /** 分通道图 X 轴类目（与多通道图同步，避免 delegate 里每次调函数） */
+    property var statusCategoriesCached: []
+    /** ListModel 不支持 color / 数组 role；用固定数量 Repeater + 缓存行数据 */
+    property var channelSeriesCache: []
 
     width: parent && parent.width > 0 ? parent.width : 360
     implicitWidth: width
     implicitHeight: page.implicitHeight
 
-    // 移动端也展示分通道 Step（在「多通道时序」下方滚动可见）；桌面窄窗仍隐藏以免挤爆
-    readonly property bool showPerChannelCharts: ShadcnAppPlatform.isMobile || width >= 520
+  readonly property bool showPerChannelCharts: ShadcnAppPlatform.isMobile || width >= 520
 
     function statusSeriesForChart() {
         var raw = ClientBackend.statusChartSeries
@@ -43,10 +45,18 @@ Item {
                                          }]
     }
 
-    function refreshCharts() {
-        chartRevision++
-        statusChart.series = statusSeriesForChart()
-        statusChart.categories = ClientBackend.statusChartCategories
+    function statusCategoriesForChart() {
+        var cats = ClientBackend.statusChartCategories
+        return cats && cats.length > 0 ? cats : [qsTr("—")]
+    }
+
+    function applyStatusCharts() {
+        var series = statusSeriesForChart()
+        var categories = statusCategoriesForChart()
+        statusChart.series = series
+        statusChart.categories = categories
+        statusCategoriesCached = categories
+        channelSeriesCache = series
     }
 
     ClientMobilePage {
@@ -102,17 +112,7 @@ Item {
             Layout.preferredHeight: implicitHeight > 0 ? implicitHeight : 280
             title: qsTr("多通道时序")
             description: qsTr("图例为通道名称；Y 轴 0 / 100 表示关 / 开")
-            categories: ClientBackend.statusChartCategories
-            series: statusSeriesForChart()
             footerText: qsTr("Legacy 断线重连为阶跃；传输线为短时脉冲。")
-            showLegend: true
-
-            Connections {
-                target: ClientBackend
-                function onStatusChartChanged() {
-                    root.refreshCharts()
-                }
-            }
         }
 
         ShadcnCard {
@@ -140,16 +140,18 @@ Item {
                         spacing: 14
 
                         Repeater {
-                            model: root.chartRevision >= 0 ? statusSeriesForChart() : []
+                            model: root.channelSeriesCache.length
 
                             ClientStatusStepChart {
-                                required property var modelData
+                                required property int index
+                                readonly property var row: root.channelSeriesCache[index]
                                 width: channelColumn.width
-                                title: modelData.label
-                                seriesLabel: modelData.label
-                                seriesColor: modelData.color
-                                values: modelData.values
-                                categories: ClientBackend.statusChartCategories
+                                immediatePlot: true
+                                title: row ? row.label : ""
+                                seriesLabel: row ? row.label : ""
+                                seriesColor: row ? row.color : ShadcnTheme.c("chart-1")
+                                values: row && row.values ? row.values : [0]
+                                categories: root.statusCategoriesCached
                                 description: ""
                                 showLegend: false
                             }
@@ -168,5 +170,12 @@ Item {
         }
     }
 
-    Component.onCompleted: refreshCharts()
+    Connections {
+        target: ClientBackend
+        function onStatusChartChanged() {
+            root.applyStatusCharts()
+        }
+    }
+
+    Component.onCompleted: applyStatusCharts()
 }

@@ -32,6 +32,21 @@ bool RestClient::isSnapshotBusy() const
     return snapshot_busy_;
 }
 
+bool RestClient::isHistoryBusy() const
+{
+    return history_inflight_ > 0;
+}
+
+void RestClient::setHistoryBusy(bool value)
+{
+    if (value) {
+        ++history_inflight_;
+    } else if (history_inflight_ > 0) {
+        --history_inflight_;
+    }
+    Q_EMIT historyBusyChanged();
+}
+
 void RestClient::setEndpoint(const QString &host, quint16 port)
 {
     if (host_ != host) {
@@ -95,6 +110,56 @@ void RestClient::fetchOpsSnapshot()
         reply->deleteLater();
         snapshot_busy_ = false;
         Q_EMIT snapshotBusyChanged();
+    });
+}
+
+void RestClient::fetchOpsHistoryDaily(int days)
+{
+    setHistoryBusy(true);
+
+    QUrlQuery query;
+    query.addQueryItem(QStringLiteral("days"), QString::number(qBound(1, days, 366)));
+    QNetworkRequest request(buildUrl(QStringLiteral("/api/v1/ops/history/daily"), query));
+    request.setHeader(QNetworkRequest::UserAgentHeader, QStringLiteral("SpeedClient/0.1"));
+
+    QNetworkReply *reply = nam_->get(request);
+    connect(reply, &QNetworkReply::finished, this, [this, reply]() {
+        const int status =
+            reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+        if (reply->error() != QNetworkReply::NoError) {
+            Q_EMIT errorOccurred(reply->errorString());
+            Q_EMIT opsHistoryDailyReceived(QString(), status > 0 ? status : 0);
+        } else {
+            Q_EMIT opsHistoryDailyReceived(QString::fromUtf8(reply->readAll()), status);
+        }
+        reply->deleteLater();
+        setHistoryBusy(false);
+    });
+}
+
+void RestClient::fetchOpsHistoryHeatmap(int year)
+{
+    setHistoryBusy(true);
+
+    QUrlQuery query;
+    if (year > 0) {
+        query.addQueryItem(QStringLiteral("year"), QString::number(year));
+    }
+    QNetworkRequest request(buildUrl(QStringLiteral("/api/v1/ops/history/heatmap"), query));
+    request.setHeader(QNetworkRequest::UserAgentHeader, QStringLiteral("SpeedClient/0.1"));
+
+    QNetworkReply *reply = nam_->get(request);
+    connect(reply, &QNetworkReply::finished, this, [this, reply]() {
+        const int status =
+            reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+        if (reply->error() != QNetworkReply::NoError) {
+            Q_EMIT errorOccurred(reply->errorString());
+            Q_EMIT opsHistoryHeatmapReceived(QString(), status > 0 ? status : 0);
+        } else {
+            Q_EMIT opsHistoryHeatmapReceived(QString::fromUtf8(reply->readAll()), status);
+        }
+        reply->deleteLater();
+        setHistoryBusy(false);
     });
 }
 
