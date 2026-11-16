@@ -38,6 +38,15 @@ Item {
 
     readonly property bool mobileHeatmap: ShadcnAppPlatform.isMobile
 
+    /** 近 7 日趋势：仅用 chart-* + 描边/混色，与 SenseDesign 折线图一致 */
+    readonly property color trendRequestsColor: ShadcnChartTheme.cartesianSeriesStrokeColor(
+                ShadcnTheme.c("chart-1"))
+    readonly property color trendEventsColor: ShadcnChartTheme.cartesianSeriesStrokeColor(
+                ShadcnStyles.mixWithForeground(ShadcnTheme.c("chart-2"),
+                                               ShadcnTheme.darkModeVisual ? 0.55 : 0.68))
+    readonly property color trendTotalColor: ShadcnChartTheme.cartesianSeriesStrokeColor(
+                ShadcnTheme.c("chart-3"))
+
     function opsHeatmapTooltip(dayData, formatLongDate) {
         var c = dayData && dayData.count !== undefined ? Number(dayData.count) : 0
         var line
@@ -120,31 +129,31 @@ Item {
             return [{
                         label: qsTr("日请求量"),
                         values: reqVals,
-                        color: ShadcnTheme.c("chart-1")
+                        color: root.trendRequestsColor
                     }]
         }
         if (metricFilter === "events") {
             return [{
                         label: qsTr("日事件量"),
                         values: evVals,
-                        color: ShadcnTheme.c("chart-2")
+                        color: root.trendEventsColor
                     }]
         }
         return [
             {
                 label: qsTr("日请求量"),
                 values: reqVals,
-                color: ShadcnTheme.c("chart-1")
+                color: root.trendRequestsColor
             },
             {
                 label: qsTr("日事件量"),
                 values: evVals,
-                color: ShadcnTheme.c("chart-2")
+                color: root.trendEventsColor
             },
             {
                 label: qsTr("合计"),
                 values: sumVals,
-                color: ShadcnTheme.c("chart-3")
+                color: root.trendTotalColor
             }
         ]
     }
@@ -245,7 +254,7 @@ Item {
             showHeader: true
             chartType: "line"
             lineStyle: "straight"
-            showLineDots: false
+            showLineDots: metricFilter === "all"
             yAxisLabelsVisible: true
             showLegend: metricFilter === "all"
             categories: root.trendCategories
