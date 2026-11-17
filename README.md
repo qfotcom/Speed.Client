@@ -100,3 +100,13 @@ powershell -File tools/android_debug_debug.ps1 -Serial <device>
 若界面仍显示旧版「单个主机」表单，请 **完整重新编译并安装**（Android 建议先卸载旧 APK 或 bump 安装），确保 `ClientBackend.legacyHost` / `restHost` 与新 QML 一并打进包内。
 
 Workflow 模式下 **PUSH 随下一次响应帧下发**；在「推送」页开启 **轮询 PING** 可及时收到事件。
+
+### 运维历史（schema 1 / 2）
+
+| 来源 | schema | 说明 |
+|------|--------|------|
+| Legacy/REST **snapshot**、流式 PUSH | **1** | 含 `framework.*.total`；开启 `ops.history` 时还带 `framework.*.today`（本地日增量） |
+| `GET /api/v1/ops/history/heatmap` | **1** | `days[].requests` / `events_published`（日增量，供热力图与近 7 日趋势） |
+| `GET /api/v1/ops/history/daily` | **2** | 日归档 `snapshots[]`，计数 id 为 `framework.*.daily` |
+
+看板顶栏数字读 **累计 total**；副标题在服务端支持时显示 **今日 today**。**全年热力图**仍用 `history/heatmap`；**近 7 日折线**用 `history/daily?days=7`，并合并当日 `framework.*.today`（日归档在午夜前不含当天）。

@@ -78,10 +78,16 @@ class ClientBackend : public QObject
     Q_PROPERTY(QString legacyPingTone READ legacyPingTone NOTIFY legacyPingRttChanged)
     Q_PROPERTY(QString dashboardRequestsTotal READ dashboardRequestsTotal NOTIFY opsDashboardChanged)
     Q_PROPERTY(QString dashboardEventsTotal READ dashboardEventsTotal NOTIFY opsDashboardChanged)
+    /** 本地日历日增量（schema 1 snapshot 内 framework.*.today，需服务端 ops.history） */
+    Q_PROPERTY(QString dashboardRequestsToday READ dashboardRequestsToday NOTIFY opsDashboardChanged)
+    Q_PROPERTY(QString dashboardEventsToday READ dashboardEventsToday NOTIFY opsDashboardChanged)
     Q_PROPERTY(QVariantList opsHeatmapDays READ opsHeatmapDays NOTIFY opsDashboardChanged)
+    /** 近 7 日趋势：schema 2 日归档 + 当日 framework.*.today */
+    Q_PROPERTY(QVariantList opsTrendDays READ opsTrendDays NOTIFY opsDashboardChanged)
     Q_PROPERTY(bool opsDashboardBusy READ opsDashboardBusy NOTIFY opsDashboardChanged)
     Q_PROPERTY(QString opsDashboardError READ opsDashboardError NOTIFY opsDashboardChanged)
     Q_PROPERTY(bool opsHeatmapReady READ opsHeatmapReady NOTIFY opsDashboardChanged)
+    Q_PROPERTY(bool opsTrendReady READ opsTrendReady NOTIFY opsDashboardChanged)
 
 public:
     explicit ClientBackend(QObject *parent = nullptr);
@@ -136,10 +142,14 @@ public:
     QString legacyPingTone() const;
     QString dashboardRequestsTotal() const;
     QString dashboardEventsTotal() const;
+    QString dashboardRequestsToday() const;
+    QString dashboardEventsToday() const;
     QVariantList opsHeatmapDays() const;
+    QVariantList opsTrendDays() const;
     bool opsDashboardBusy() const;
     QString opsDashboardError() const;
     bool opsHeatmapReady() const;
+    bool opsTrendReady() const;
 
     void setLegacyHost(const QString &value);
     void setRestHost(const QString &value);
@@ -201,7 +211,11 @@ private:
     void parseOpsSnapshotPayload(const QString &body, int httpStatus);
     void applyOpsSnapshotJson(const QString &body, const QString &source);
     void parseOpsHeatmapPayload(const QString &body, int httpStatus);
+    void parseOpsHistoryDailyPayload(const QString &body, int httpStatus);
     void updateDashboardTotalsFromMetrics(const QJsonArray &metrics);
+    void rebuildOpsTrendDays();
+    void onOpsDashboardHistoryFetchFinished();
+    static quint64 metricCountU64(const QJsonArray &metrics, const QString &id);
     void subscribeOpsMetrics();
     void restoreOpsMetricsSubscription();
     void resetLegacyPingRtt();
@@ -230,6 +244,7 @@ private:
     static constexpr int kStatusHistoryMax = 5;
     static constexpr int kStatusSampleIntervalMs = 1000;
     static constexpr int kStatusPlotMaxPoints = kStatusHistoryMax;
+    static constexpr int kOpsDashboardTrendDays = 7;
     speed::client::legacy::LegacyClient *legacy_{nullptr};
     speed::client::rest::RestClient *rest_{nullptr};
     QTimer *reconnect_timer_{nullptr};
@@ -292,9 +307,19 @@ private:
     int legacy_ping_rtt_ms_{-1};
 
     QString dashboard_requests_total_{QStringLiteral("—")};
+    QString dashboard_requests_today_{QStringLiteral("—")};
     QString dashboard_events_total_{QStringLiteral("—")};
+    QString dashboard_events_today_{QStringLiteral("—")};
     QVariantList ops_heatmap_days_;
+    QVariantList ops_daily_days_;
+    QVariantList ops_trend_days_;
     bool ops_heatmap_ready_{false};
+    bool ops_trend_ready_{false};
     QString ops_dashboard_error_;
     bool ops_dashboard_refresh_pending_{false};
+    int ops_dashboard_history_pending_{0};
+    bool dashboard_requests_today_valid_{false};
+    bool dashboard_events_today_valid_{false};
+    quint64 dashboard_requests_today_count_{0};
+    quint64 dashboard_events_today_count_{0};
 };

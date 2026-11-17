@@ -12,7 +12,8 @@ Item {
     property string metricFilter: "all"
 
     readonly property var trendChartBindKey: ({
-                                                 days: ClientBackend.opsHeatmapDays,
+                                                 days: ClientBackend.opsTrendDays,
+                                                 ready: ClientBackend.opsTrendReady,
                                                  filter: metricFilter
                                              })
 
@@ -91,24 +92,16 @@ Item {
         return isoDate.substring(5, 10)
     }
 
-    function lastSevenDaysRows() {
-        var raw = ClientBackend.opsHeatmapDays
+    function trendRowsForChart() {
+        var raw = ClientBackend.opsTrendDays
         if (!raw || raw.length === 0) {
             return []
         }
-        var sorted = []
-        for (var i = 0; i < raw.length; i++) {
-            sorted.push(raw[i])
-        }
-        sorted.sort(function (a, b) {
-            return String(a.date) < String(b.date) ? -1 : 1
-        })
-        var start = Math.max(0, sorted.length - 7)
-        return sorted.slice(start)
+        return raw
     }
 
     function trendSeriesForChart() {
-        var rows = lastSevenDaysRows()
+        var rows = trendRowsForChart()
         var reqVals = []
         var evVals = []
         var sumVals = []
@@ -159,7 +152,7 @@ Item {
     }
 
     function trendCategoriesForChart() {
-        var rows = lastSevenDaysRows()
+        var rows = trendRowsForChart()
         var cats = []
         for (var i = 0; i < rows.length; i++) {
             cats.push(shortDateLabel(rows[i].date))
@@ -198,7 +191,9 @@ Item {
                 iconName: "list-checks"
                 title: qsTr("累计请求")
                 value: ClientBackend.dashboardRequestsTotal
-                hint: qsTr("framework.requests.total · 当前 snapshot")
+                hint: ClientBackend.dashboardRequestsToday !== "—"
+                        ? qsTr("自进程启动 · 今日 %1").arg(ClientBackend.dashboardRequestsToday)
+                        : qsTr("framework.requests.total · 当前 snapshot")
             }
 
             ServerMetricTile {
@@ -206,7 +201,9 @@ Item {
                 iconName: "radio-tower"
                 title: qsTr("事件发布")
                 value: ClientBackend.dashboardEventsTotal
-                hint: qsTr("framework.events.published_total · 含运维 topic 推送")
+                hint: ClientBackend.dashboardEventsToday !== "—"
+                        ? qsTr("累计发布 · 今日 %1").arg(ClientBackend.dashboardEventsToday)
+                        : qsTr("framework.events.published_total · 含运维 topic 推送")
             }
         }
 
@@ -250,7 +247,7 @@ Item {
             Layout.fillWidth: true
             plotMountDelayMs: 0
             title: qsTr("近 7 日趋势")
-            description: qsTr("按日请求 / 事件增量；「全部」显示两条线 + 合计。")
+            description: qsTr("数据来源 history/daily（schema 2）；当日点位来自 snapshot 的 today 指标。")
             showHeader: true
             chartType: "line"
             lineStyle: "straight"
