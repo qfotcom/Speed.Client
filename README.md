@@ -106,7 +106,8 @@ Workflow 模式下 **PUSH 随下一次响应帧下发**；在「推送」页开�
 | 来源 | kind | 说明 |
 |------|------|------|
 | Legacy/REST **snapshot**、流式 PUSH | **snapshot** | `framework.*.total`；`ops.history` 时还带 `*.today` |
+| `GET /api/v1/ops/dashboard` | **dashboard** | 嵌套 `snapshot` + `daily_list` + `heatmap`（看板刷新 **1 次 HTTP**） |
 | `GET /api/v1/ops/history/heatmap` | **heatmap** | `days[].requests` / `events_published`（全年热力图） |
 | `GET /api/v1/ops/history/daily` | **daily_list** → **daily** | `snapshots[]` 内 `framework.*.daily` |
 
-看板顶栏：**Snapshot** 累计 + 今日。**热力图**：heatmap。**近 7 日折线**：**Daily** 归档 + 当日 Snapshot `*.today`。
+看板顶栏：**Snapshot** 累计 + 今日。**热力图**：heatmap。**近 7 日折线**：**Daily** 归档 + 当日 Snapshot `*.today`。运维看板 **刷新** 走 `dashboard` 聚合接口。

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QJsonArray>
+#include <QJsonObject>
 #include <QObject>
 #include <QString>
 #include <QStringList>
@@ -210,8 +211,11 @@ Q_SIGNALS:
 private:
     void parseOpsSnapshotPayload(const QString &body, int httpStatus);
     void applyOpsSnapshotJson(const QString &body, const QString &source);
+    void parseOpsDashboardPayload(const QString &body, int httpStatus);
     void parseOpsHeatmapPayload(const QString &body, int httpStatus);
     void parseOpsHistoryDailyPayload(const QString &body, int httpStatus);
+    bool applyOpsDailyListObject(const QJsonObject &root);
+    bool applyOpsHeatmapObject(const QJsonObject &root);
     void updateDashboardTotalsFromMetrics(const QJsonArray &metrics);
     void rebuildOpsTrendDays();
     void onOpsDashboardHistoryFetchFinished();

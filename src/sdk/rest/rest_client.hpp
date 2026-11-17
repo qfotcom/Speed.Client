@@ -20,6 +20,7 @@ public:
     bool useTls() const;
     bool isBusy() const;
     bool isSnapshotBusy() const;
+    bool isDashboardBusy() const;
     bool isHistoryBusy() const;
 
 public Q_SLOTS:
@@ -27,6 +28,7 @@ public Q_SLOTS:
     void fetchHealth();
     void fetchEcho(const QString &text);
     void fetchOpsSnapshot();
+    void fetchOpsDashboard(int days = 7, int year = 0);
     void fetchOpsHistoryDaily(int days = 7);
     void fetchOpsHistoryHeatmap(int year = 0);
 
@@ -36,11 +38,13 @@ Q_SIGNALS:
     void useTlsChanged();
     void busyChanged();
     void snapshotBusyChanged();
+    void dashboardBusyChanged();
     void historyBusyChanged();
     void errorOccurred(const QString &message);
     void healthReceived(const QString &body, int httpStatus);
     void echoReceived(const QString &body, int httpStatus);
     void opsSnapshotReceived(const QString &body, int httpStatus);
+    void opsDashboardReceived(const QString &body, int httpStatus);
     void opsHistoryDailyReceived(const QString &body, int httpStatus);
     void opsHistoryHeatmapReceived(const QString &body, int httpStatus);
 
@@ -55,6 +59,7 @@ private:
     bool use_tls_{true};
     bool busy_{false};
     bool snapshot_busy_{false};
+    bool dashboard_busy_{false};
     int history_inflight_{0};
 };
 

@@ -186,6 +186,10 @@ ClientBackend::ClientBackend(QObject *parent)
             [this](const QString &body, int status) {
                 parseOpsSnapshotPayload(body, status);
             });
+    connect(rest_, &speed::client::rest::RestClient::opsDashboardReceived, this,
+            [this](const QString &body, int status) {
+                parseOpsDashboardPayload(body, status);
+            });
     connect(rest_, &speed::client::rest::RestClient::opsHistoryHeatmapReceived, this,
             [this](const QString &body, int status) {
                 parseOpsHeatmapPayload(body, status);
@@ -1192,7 +1196,7 @@ void ClientBackend::applyOpsSnapshotJson(const QString &body, const QString &sou
             ops_metrics_stream_active_ = true;
             Q_EMIT serverOpsStreamChanged();
         }
-    } else {
+    } else if (!ops_dashboard_refresh_pending_) {
         appendLog(QStringLiteral("[%1 snapshot] %2 指标").arg(source).arg(server_ops_tiles_.size()));
     }
     Q_EMIT serverSnapshotChanged();
@@ -1235,7 +1239,7 @@ bool ClientBackend::opsTrendReady() const
 
 bool ClientBackend::opsDashboardBusy() const
 {
-    return ops_dashboard_refresh_pending_ || rest_->isHistoryBusy();
+    return ops_dashboard_refresh_pending_ || rest_->isDashboardBusy();
 }
 
 QString ClientBackend::opsDashboardError() const
@@ -1252,12 +1256,10 @@ void ClientBackend::refreshOpsDashboard()
 {
     ops_dashboard_error_.clear();
     ops_dashboard_refresh_pending_ = true;
-    ops_dashboard_history_pending_ = 2;
+    ops_dashboard_history_pending_ = 0;
     Q_EMIT opsDashboardChanged();
 
-    fetchServerSnapshot();
-    rest_->fetchOpsHistoryDaily(kOpsDashboardTrendDays);
-    rest_->fetchOpsHistoryHeatmap(QDate::currentDate().year());
+    rest_->fetchOpsDashboard(kOpsDashboardTrendDays, QDate::currentDate().year());
 }
 
 void ClientBackend::updateDashboardTotalsFromMetrics(const QJsonArray &metrics)
@@ -1312,9 +1314,13 @@ void ClientBackend::onOpsDashboardHistoryFetchFinished()
         --ops_dashboard_history_pending_;
     }
     if (ops_dashboard_history_pending_ <= 0) {
+        const bool finished_dashboard = ops_dashboard_refresh_pending_;
         ops_dashboard_refresh_pending_ = false;
         ops_dashboard_history_pending_ = 0;
         rebuildOpsTrendDays();
+        if (finished_dashboard) {
+            appendLog(QStringLiteral("[看板] 已刷新（Snapshot + Daily + Heatmap）"));
+        }
     }
     Q_EMIT opsDashboardChanged();
 }
@@ -1363,33 +1369,8 @@ void ClientBackend::rebuildOpsTrendDays()
     ops_trend_ready_ = ops_trend_days_.size() == kOpsDashboardTrendDays;
 }
 
-void ClientBackend::parseOpsHistoryDailyPayload(const QString &body, int httpStatus)
+bool ClientBackend::applyOpsDailyListObject(const QJsonObject &root)
 {
-    if (httpStatus < 200 || httpStatus >= 300 || body.isEmpty()) {
-        ops_daily_days_.clear();
-        if (ops_dashboard_error_.isEmpty()) {
-            ops_dashboard_error_ = httpStatus == 503
-                                         ? QStringLiteral("服务端未开启 ops.history")
-                                         : (httpStatus > 0 ? QStringLiteral("HTTP %1").arg(httpStatus)
-                                                           : QStringLiteral("无法读取日归档"));
-        }
-        appendLog(QStringLiteral("[REST /api/v1/ops/history/daily] %1").arg(ops_dashboard_error_));
-        onOpsDashboardHistoryFetchFinished();
-        return;
-    }
-
-    QJsonParseError parseError;
-    const QJsonDocument doc = QJsonDocument::fromJson(body.toUtf8(), &parseError);
-    if (parseError.error != QJsonParseError::NoError || !doc.isObject()) {
-        ops_daily_days_.clear();
-        if (ops_dashboard_error_.isEmpty()) {
-            ops_dashboard_error_ = QStringLiteral("日归档 JSON 解析失败");
-        }
-        onOpsDashboardHistoryFetchFinished();
-        return;
-    }
-
-    const QJsonObject root = doc.object();
     const QJsonArray snapshots = root.value(QStringLiteral("snapshots")).toArray();
     QVariantList parsed;
     parsed.reserve(snapshots.size());
@@ -1429,9 +1410,127 @@ void ClientBackend::parseOpsHistoryDailyPayload(const QString &body, int httpSta
     });
 
     ops_daily_days_ = parsed;
+    return true;
+}
+
+void ClientBackend::parseOpsHistoryDailyPayload(const QString &body, int httpStatus)
+{
+    if (httpStatus < 200 || httpStatus >= 300 || body.isEmpty()) {
+        ops_daily_days_.clear();
+        if (ops_dashboard_error_.isEmpty()) {
+            ops_dashboard_error_ = httpStatus == 503
+                                         ? QStringLiteral("服务端未开启 ops.history")
+                                         : (httpStatus > 0 ? QStringLiteral("HTTP %1").arg(httpStatus)
+                                                           : QStringLiteral("无法读取日归档"));
+        }
+        appendLog(QStringLiteral("[REST /api/v1/ops/history/daily] %1").arg(ops_dashboard_error_));
+        onOpsDashboardHistoryFetchFinished();
+        return;
+    }
+
+    QJsonParseError parseError;
+    const QJsonDocument doc = QJsonDocument::fromJson(body.toUtf8(), &parseError);
+    if (parseError.error != QJsonParseError::NoError || !doc.isObject()) {
+        ops_daily_days_.clear();
+        if (ops_dashboard_error_.isEmpty()) {
+            ops_dashboard_error_ = QStringLiteral("日归档 JSON 解析失败");
+        }
+        onOpsDashboardHistoryFetchFinished();
+        return;
+    }
+
+    applyOpsDailyListObject(doc.object());
     ops_dashboard_error_.clear();
-    appendLog(QStringLiteral("[REST daily] %1 天归档").arg(ops_daily_days_.size()));
+    if (!ops_dashboard_refresh_pending_) {
+        appendLog(QStringLiteral("[REST daily] %1 天归档").arg(ops_daily_days_.size()));
+    }
     onOpsDashboardHistoryFetchFinished();
+}
+
+void ClientBackend::parseOpsDashboardPayload(const QString &body, int httpStatus)
+{
+    const bool dashboard_refresh = ops_dashboard_refresh_pending_;
+    if (httpStatus < 200 || httpStatus >= 300 || body.isEmpty()) {
+        ops_daily_days_.clear();
+        ops_heatmap_ready_ = false;
+        ops_dashboard_error_ = httpStatus == 503
+                                   ? QStringLiteral("服务端未开启 ops.history")
+                                   : (httpStatus > 0 ? QStringLiteral("HTTP %1").arg(httpStatus)
+                                                     : QStringLiteral("无法读取看板数据"));
+        appendLog(QStringLiteral("[REST /api/v1/ops/dashboard] %1").arg(ops_dashboard_error_));
+        ops_dashboard_refresh_pending_ = false;
+        Q_EMIT opsDashboardChanged();
+        return;
+    }
+
+    QJsonParseError parseError;
+    const QJsonDocument doc = QJsonDocument::fromJson(body.toUtf8(), &parseError);
+    if (parseError.error != QJsonParseError::NoError || !doc.isObject()) {
+        ops_dashboard_error_ = QStringLiteral("看板 JSON 解析失败");
+        ops_dashboard_refresh_pending_ = false;
+        Q_EMIT opsDashboardChanged();
+        return;
+    }
+
+    const QJsonObject root = doc.object();
+    if (root.value(QStringLiteral("kind")).toString() != QLatin1String("dashboard")) {
+        ops_dashboard_error_ = QStringLiteral("看板 kind 无效");
+        ops_dashboard_refresh_pending_ = false;
+        Q_EMIT opsDashboardChanged();
+        return;
+    }
+
+    const QJsonObject dailyObj = root.value(QStringLiteral("daily_list")).toObject();
+    const QJsonObject heatObj = root.value(QStringLiteral("heatmap")).toObject();
+    const QJsonObject snapObj = root.value(QStringLiteral("snapshot")).toObject();
+
+    applyOpsDailyListObject(dailyObj);
+    if (!applyOpsHeatmapObject(heatObj)) {
+        ops_heatmap_ready_ = false;
+    }
+    if (!snapObj.isEmpty()) {
+        applyOpsSnapshotJson(
+            QString::fromUtf8(QJsonDocument(snapObj).toJson(QJsonDocument::Compact)),
+            QStringLiteral("REST"));
+    }
+
+    ops_dashboard_error_.clear();
+    ops_dashboard_refresh_pending_ = false;
+    rebuildOpsTrendDays();
+    if (dashboard_refresh) {
+        appendLog(QStringLiteral("[看板] 已刷新（Dashboard 聚合）"));
+    }
+    Q_EMIT opsDashboardChanged();
+}
+
+bool ClientBackend::applyOpsHeatmapObject(const QJsonObject &root)
+{
+    const QJsonArray days = root.value(QStringLiteral("days")).toArray();
+    QVariantList parsed;
+    parsed.reserve(days.size());
+    for (const QJsonValue &item : days) {
+        const QJsonObject row = item.toObject();
+        const QString date = row.value(QStringLiteral("date")).toString();
+        if (date.isEmpty()) {
+            continue;
+        }
+        parsed.append(QVariantMap{
+            {QStringLiteral("date"), date},
+            {QStringLiteral("requests"),
+             row.value(QStringLiteral("requests")).toVariant().toULongLong()},
+            {QStringLiteral("events_published"),
+             row.value(QStringLiteral("events_published")).toVariant().toULongLong()},
+        });
+    }
+
+    std::sort(parsed.begin(), parsed.end(), [](const QVariant &a, const QVariant &b) {
+        return a.toMap().value(QStringLiteral("date")).toString()
+               < b.toMap().value(QStringLiteral("date")).toString();
+    });
+
+    ops_heatmap_days_ = parsed;
+    ops_heatmap_ready_ = true;
+    return true;
 }
 
 void ClientBackend::parseOpsHeatmapPayload(const QString &body, int httpStatus)
@@ -1458,31 +1557,9 @@ void ClientBackend::parseOpsHeatmapPayload(const QString &body, int httpStatus)
         return;
     }
 
-    const QJsonArray days = doc.object().value(QStringLiteral("days")).toArray();
-    QVariantList parsed;
-    parsed.reserve(days.size());
-    for (const QJsonValue &item : days) {
-        const QJsonObject row = item.toObject();
-        const QString date = row.value(QStringLiteral("date")).toString();
-        if (date.isEmpty()) {
-            continue;
-        }
-        parsed.append(QVariantMap{
-            {QStringLiteral("date"), date},
-            {QStringLiteral("requests"),
-             row.value(QStringLiteral("requests")).toVariant().toULongLong()},
-            {QStringLiteral("events_published"),
-             row.value(QStringLiteral("events_published")).toVariant().toULongLong()},
-        });
+    applyOpsHeatmapObject(doc.object());
+    if (!ops_dashboard_refresh_pending_) {
+        appendLog(QStringLiteral("[REST heatmap] %1 天").arg(ops_heatmap_days_.size()));
     }
-
-    std::sort(parsed.begin(), parsed.end(), [](const QVariant &a, const QVariant &b) {
-        return a.toMap().value(QStringLiteral("date")).toString()
-               < b.toMap().value(QStringLiteral("date")).toString();
-    });
-
-    ops_heatmap_days_ = parsed;
-    ops_heatmap_ready_ = true;
-    appendLog(QStringLiteral("[REST heatmap] %1 天").arg(ops_heatmap_days_.size()));
     onOpsDashboardHistoryFetchFinished();
 }

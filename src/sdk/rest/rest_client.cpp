@@ -37,6 +37,11 @@ bool RestClient::isSnapshotBusy() const
     return snapshot_busy_;
 }
 
+bool RestClient::isDashboardBusy() const
+{
+    return dashboard_busy_;
+}
+
 bool RestClient::isHistoryBusy() const
 {
     return history_inflight_ > 0;
@@ -91,6 +96,38 @@ void RestClient::fetchHealth()
         }
         reply->deleteLater();
         setBusy(false);
+    });
+}
+
+void RestClient::fetchOpsDashboard(int days, int year)
+{
+    if (dashboard_busy_) {
+        return;
+    }
+    dashboard_busy_ = true;
+    Q_EMIT dashboardBusyChanged();
+
+    QUrlQuery query;
+    query.addQueryItem(QStringLiteral("days"), QString::number(qBound(1, days, 366)));
+    if (year > 0) {
+        query.addQueryItem(QStringLiteral("year"), QString::number(year));
+    }
+    QNetworkRequest request(buildUrl(QStringLiteral("/api/v1/ops/dashboard"), query));
+    request.setHeader(QNetworkRequest::UserAgentHeader, QStringLiteral("SpeedClient/0.1"));
+
+    QNetworkReply *reply = nam_->get(request);
+    connect(reply, &QNetworkReply::finished, this, [this, reply]() {
+        const int status =
+            reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+        if (reply->error() != QNetworkReply::NoError) {
+            Q_EMIT errorOccurred(reply->errorString());
+            Q_EMIT opsDashboardReceived(QString(), status > 0 ? status : 0);
+        } else {
+            Q_EMIT opsDashboardReceived(QString::fromUtf8(reply->readAll()), status);
+        }
+        reply->deleteLater();
+        dashboard_busy_ = false;
+        Q_EMIT dashboardBusyChanged();
     });
 }
 
