@@ -1255,9 +1255,7 @@ void ClientBackend::refreshOpsDashboard()
     ops_dashboard_history_pending_ = 2;
     Q_EMIT opsDashboardChanged();
 
-    if (!serverSnapshotBusy()) {
-        fetchServerSnapshot();
-    }
+    fetchServerSnapshot();
     rest_->fetchOpsHistoryDaily(kOpsDashboardTrendDays);
     rest_->fetchOpsHistoryHeatmap(QDate::currentDate().year());
 }
