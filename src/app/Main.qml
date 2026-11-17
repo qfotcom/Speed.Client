@@ -6,6 +6,7 @@ import "page-config.js" as PageConfig
 ShadcnAppWindow {
     id: shell
 
+    darkMode: true
     docSiteChrome: false
     keepPagesAlive: true
     appTitle: qsTr("SpeedClient")
