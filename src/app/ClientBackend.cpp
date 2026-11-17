@@ -1453,10 +1453,13 @@ void ClientBackend::parseOpsDashboardPayload(const QString &body, int httpStatus
     if (httpStatus < 200 || httpStatus >= 300 || body.isEmpty()) {
         ops_daily_days_.clear();
         ops_heatmap_ready_ = false;
-        ops_dashboard_error_ = httpStatus == 503
-                                   ? QStringLiteral("服务端未开启 ops.history")
-                                   : (httpStatus > 0 ? QStringLiteral("HTTP %1").arg(httpStatus)
-                                                     : QStringLiteral("无法读取看板数据"));
+        ops_trend_ready_ = false;
+        ops_dashboard_error_ = httpStatus == 404
+                                   ? QStringLiteral("服务端未升级（缺少 GET /api/v1/ops/dashboard）")
+                                   : httpStatus == 503
+                                         ? QStringLiteral("服务端未开启 ops.history")
+                                         : (httpStatus > 0 ? QStringLiteral("HTTP %1").arg(httpStatus)
+                                                           : QStringLiteral("无法读取看板数据"));
         appendLog(QStringLiteral("[REST /api/v1/ops/dashboard] %1").arg(ops_dashboard_error_));
         ops_dashboard_refresh_pending_ = false;
         Q_EMIT opsDashboardChanged();
