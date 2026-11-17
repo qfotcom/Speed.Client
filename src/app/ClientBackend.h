@@ -78,11 +78,11 @@ class ClientBackend : public QObject
     Q_PROPERTY(QString legacyPingTone READ legacyPingTone NOTIFY legacyPingRttChanged)
     Q_PROPERTY(QString dashboardRequestsTotal READ dashboardRequestsTotal NOTIFY opsDashboardChanged)
     Q_PROPERTY(QString dashboardEventsTotal READ dashboardEventsTotal NOTIFY opsDashboardChanged)
-    /** 本地日历日增量（schema 1 snapshot 内 framework.*.today，需服务端 ops.history） */
+    /** 本地日历日增量（Snapshot 内 framework.*.today，需服务端 ops.history） */
     Q_PROPERTY(QString dashboardRequestsToday READ dashboardRequestsToday NOTIFY opsDashboardChanged)
     Q_PROPERTY(QString dashboardEventsToday READ dashboardEventsToday NOTIFY opsDashboardChanged)
     Q_PROPERTY(QVariantList opsHeatmapDays READ opsHeatmapDays NOTIFY opsDashboardChanged)
-    /** 近 7 日趋势：schema 2 日归档 + 当日 framework.*.today */
+    /** 近 7 日趋势：Daily 归档 + 当日 Snapshot framework.*.today */
     Q_PROPERTY(QVariantList opsTrendDays READ opsTrendDays NOTIFY opsDashboardChanged)
     Q_PROPERTY(bool opsDashboardBusy READ opsDashboardBusy NOTIFY opsDashboardChanged)
     Q_PROPERTY(QString opsDashboardError READ opsDashboardError NOTIFY opsDashboardChanged)

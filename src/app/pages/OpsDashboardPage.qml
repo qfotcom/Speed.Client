@@ -28,8 +28,8 @@ Item {
 
     readonly property var heatmapFilterSegments: [
         { value: "all", label: qsTr("全部") },
-        { value: "requests", label: qsTr("累计请求") },
-        { value: "events", label: qsTr("事件发布") }
+        { value: "requests", label: qsTr("日请求") },
+        { value: "events", label: qsTr("日事件") }
     ]
 
     readonly property string heatmapCaption:
@@ -164,7 +164,7 @@ Item {
         id: page
         width: parent.width
         title: qsTr("运维看板")
-        subtitle: qsTr("累计请求与事件发布；热力图与趋势来自 REST /api/v1/ops/history/*")
+        subtitle: qsTr("Snapshot：累计 + 今日；Daily / Heatmap：日频历史。")
 
         RowLayout {
             Layout.fillWidth: true
@@ -193,7 +193,7 @@ Item {
                 value: ClientBackend.dashboardRequestsTotal
                 hint: ClientBackend.dashboardRequestsToday !== "—"
                         ? qsTr("自进程启动 · 今日 %1").arg(ClientBackend.dashboardRequestsToday)
-                        : qsTr("framework.requests.total · 当前 snapshot")
+                        : qsTr("Snapshot · framework.requests.total")
             }
 
             ServerMetricTile {
@@ -247,7 +247,7 @@ Item {
             Layout.fillWidth: true
             plotMountDelayMs: 0
             title: qsTr("近 7 日趋势")
-            description: qsTr("前 6 日：history/daily 日归档；当日：snapshot 的 framework.*.today（日 K + 盘中）。")
+            description: qsTr("前 6 日：Daily 归档；当日：Snapshot framework.*.today")
             showHeader: true
             chartType: "line"
             lineStyle: "straight"

@@ -1405,11 +1405,12 @@ void ClientBackend::parseOpsHistoryDailyPayload(const QString &body, int httpSta
         if (date.isEmpty() || metrics.isEmpty()) {
             continue;
         }
-        const int schema = snap.value(QStringLiteral("schema")).toInt(1);
+        const QString kind = snap.value(QStringLiteral("kind")).toString();
         const bool hasDaily =
-                metricValue(metrics, QStringLiteral("framework.requests.daily")).isValid()
+                kind == QLatin1String("daily")
+                || metricValue(metrics, QStringLiteral("framework.requests.daily")).isValid()
                 || metricValue(metrics, QStringLiteral("framework.events.daily")).isValid();
-        if (schema < 2 && !hasDaily) {
+        if (!hasDaily) {
             continue;
         }
         quint64 req = metricCountU64(metrics, QStringLiteral("framework.requests.daily"));

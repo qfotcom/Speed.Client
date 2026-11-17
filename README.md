@@ -101,12 +101,12 @@ powershell -File tools/android_debug_debug.ps1 -Serial <device>
 
 Workflow 模式下 **PUSH 随下一次响应帧下发**；在「推送」页开启 **轮询 PING** 可及时收到事件。
 
-### 运维历史（schema 1 / 2）
+### 运维历史（Snapshot / Daily）
 
-| 来源 | schema | 说明 |
-|------|--------|------|
-| Legacy/REST **snapshot**、流式 PUSH | **1** | 含 `framework.*.total`；开启 `ops.history` 时还带 `framework.*.today`（本地日增量） |
-| `GET /api/v1/ops/history/heatmap` | **1** | `days[].requests` / `events_published`（日增量，供热力图与近 7 日趋势） |
-| `GET /api/v1/ops/history/daily` | **2** | 日归档 `snapshots[]`，计数 id 为 `framework.*.daily` |
+| 来源 | kind | 说明 |
+|------|------|------|
+| Legacy/REST **snapshot**、流式 PUSH | **snapshot** | `framework.*.total`；`ops.history` 时还带 `*.today` |
+| `GET /api/v1/ops/history/heatmap` | **heatmap** | `days[].requests` / `events_published`（全年热力图） |
+| `GET /api/v1/ops/history/daily` | **daily_list** → **daily** | `snapshots[]` 内 `framework.*.daily` |
 
-看板顶栏数字读 **累计 total**；副标题在服务端支持时显示 **今日 today**。**全年热力图**用 `history/heatmap`。**近 7 日折线**固定 7 个日历日：`history/daily?days=7` 填 **前 6 日及更早**（有归档则显示，无则 0）；**当天**始终用 snapshot 的 `framework.*.today`（类似日 K + 当日分时）。
+看板顶栏：**Snapshot** 累计 + 今日。**热力图**：heatmap。**近 7 日折线**：**Daily** 归档 + 当日 Snapshot `*.today`。
