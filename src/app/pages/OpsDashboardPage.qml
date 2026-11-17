@@ -247,7 +247,7 @@ Item {
             Layout.fillWidth: true
             plotMountDelayMs: 0
             title: qsTr("近 7 日趋势")
-            description: qsTr("数据来源 history/daily（schema 2）；当日点位来自 snapshot 的 today 指标。")
+            description: qsTr("前 6 日：history/daily 日归档；当日：snapshot 的 framework.*.today（日 K + 盘中）。")
             showHeader: true
             chartType: "line"
             lineStyle: "straight"

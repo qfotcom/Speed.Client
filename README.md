@@ -109,4 +109,4 @@ Workflow 模式下 **PUSH 随下一次响应帧下发**；在「推送」页开�
 | `GET /api/v1/ops/history/heatmap` | **1** | `days[].requests` / `events_published`（日增量，供热力图与近 7 日趋势） |
 | `GET /api/v1/ops/history/daily` | **2** | 日归档 `snapshots[]`，计数 id 为 `framework.*.daily` |
 
-看板顶栏数字读 **累计 total**；副标题在服务端支持时显示 **今日 today**。**全年热力图**仍用 `history/heatmap`；**近 7 日折线**用 `history/daily?days=7`，并合并当日 `framework.*.today`（日归档在午夜前不含当天）。
+看板顶栏数字读 **累计 total**；副标题在服务端支持时显示 **今日 today**。**全年热力图**用 `history/heatmap`。**近 7 日折线**固定 7 个日历日：`history/daily?days=7` 填 **前 6 日及更早**（有归档则显示，无则 0）；**当天**始终用 snapshot 的 `framework.*.today`（类似日 K + 当日分时）。

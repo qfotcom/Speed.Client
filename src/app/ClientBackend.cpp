@@ -4,6 +4,7 @@
 
 #include <QDate>
 #include <QDateTime>
+#include <QMap>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QRegularExpression>
@@ -1254,7 +1255,7 @@ void ClientBackend::refreshOpsDashboard()
     ops_dashboard_history_pending_ = 2;
     Q_EMIT opsDashboardChanged();
 
-    if (!server_snapshot_ready_ && !serverSnapshotBusy()) {
+    if (!serverSnapshotBusy()) {
         fetchServerSnapshot();
     }
     rest_->fetchOpsHistoryDaily(kOpsDashboardTrendDays);
@@ -1322,53 +1323,52 @@ void ClientBackend::onOpsDashboardHistoryFetchFinished()
 
 void ClientBackend::rebuildOpsTrendDays()
 {
-    QVariantList rows = ops_daily_days_;
-    const QString today = QDate::currentDate().toString(QStringLiteral("yyyy-MM-dd"));
-
-    auto upsertDay = [&](const QString &date, quint64 requests, quint64 events) {
-        for (int i = 0; i < rows.size(); ++i) {
-            const QVariantMap m = rows.at(i).toMap();
-            if (m.value(QStringLiteral("date")).toString() == date) {
-                QVariantMap u = m;
-                u.insert(QStringLiteral("requests"), QVariant::fromValue(requests));
-                u.insert(QStringLiteral("events_published"), QVariant::fromValue(events));
-                rows[i] = u;
-                return;
-            }
+    /** 日 K：前 6 日 = history/daily 归档；当日 = 实时 snapshot 的 framework.*.today */
+    QMap<QString, QPair<quint64, quint64>> archived;
+    for (const QVariant &item : ops_daily_days_) {
+        const QVariantMap m = item.toMap();
+        const QString date = m.value(QStringLiteral("date")).toString();
+        if (date.isEmpty()) {
+            continue;
         }
-        rows.append(QVariantMap{
-            {QStringLiteral("date"), date},
-            {QStringLiteral("requests"), QVariant::fromValue(requests)},
-            {QStringLiteral("events_published"), QVariant::fromValue(events)},
-        });
-    };
-
-    if (dashboard_requests_today_valid_ || dashboard_events_today_valid_) {
-        upsertDay(today, dashboard_requests_today_valid_ ? dashboard_requests_today_count_ : 0,
-                  dashboard_events_today_valid_ ? dashboard_events_today_count_ : 0);
+        archived.insert(
+            date,
+            qMakePair(m.value(QStringLiteral("requests")).toULongLong(),
+                      m.value(QStringLiteral("events_published")).toULongLong()));
     }
 
-    std::sort(rows.begin(), rows.end(), [](const QVariant &a, const QVariant &b) {
-        return a.toMap().value(QStringLiteral("date")).toString()
-               < b.toMap().value(QStringLiteral("date")).toString();
-    });
+    const QDate todayDate = QDate::currentDate();
+    const QString today = todayDate.toString(QStringLiteral("yyyy-MM-dd"));
 
-    const int start = qMax(0, rows.size() - kOpsDashboardTrendDays);
     QVariantList window;
     window.reserve(kOpsDashboardTrendDays);
-    for (int i = start; i < rows.size(); ++i) {
-        window.append(rows.at(i));
+    for (int i = 0; i < kOpsDashboardTrendDays; ++i) {
+        const QDate d = todayDate.addDays(i - (kOpsDashboardTrendDays - 1));
+        const QString date = d.toString(QStringLiteral("yyyy-MM-dd"));
+        quint64 req = 0;
+        quint64 ev = 0;
+        if (date == today) {
+            req = dashboard_requests_today_valid_ ? dashboard_requests_today_count_ : 0;
+            ev = dashboard_events_today_valid_ ? dashboard_events_today_count_ : 0;
+        } else if (archived.contains(date)) {
+            req = archived.value(date).first;
+            ev = archived.value(date).second;
+        }
+        window.append(QVariantMap{
+            {QStringLiteral("date"), date},
+            {QStringLiteral("requests"), QVariant::fromValue(req)},
+            {QStringLiteral("events_published"), QVariant::fromValue(ev)},
+        });
     }
 
     ops_trend_days_ = window;
-    ops_trend_ready_ = !ops_trend_days_.isEmpty();
+    ops_trend_ready_ = ops_trend_days_.size() == kOpsDashboardTrendDays;
 }
 
 void ClientBackend::parseOpsHistoryDailyPayload(const QString &body, int httpStatus)
 {
     if (httpStatus < 200 || httpStatus >= 300 || body.isEmpty()) {
         ops_daily_days_.clear();
-        ops_trend_ready_ = false;
         if (ops_dashboard_error_.isEmpty()) {
             ops_dashboard_error_ = httpStatus == 503
                                          ? QStringLiteral("服务端未开启 ops.history")
@@ -1384,7 +1384,6 @@ void ClientBackend::parseOpsHistoryDailyPayload(const QString &body, int httpSta
     const QJsonDocument doc = QJsonDocument::fromJson(body.toUtf8(), &parseError);
     if (parseError.error != QJsonParseError::NoError || !doc.isObject()) {
         ops_daily_days_.clear();
-        ops_trend_ready_ = false;
         if (ops_dashboard_error_.isEmpty()) {
             ops_dashboard_error_ = QStringLiteral("日归档 JSON 解析失败");
         }
@@ -1406,10 +1405,16 @@ void ClientBackend::parseOpsHistoryDailyPayload(const QString &body, int httpSta
         if (date.isEmpty() || metrics.isEmpty()) {
             continue;
         }
+        const int schema = snap.value(QStringLiteral("schema")).toInt(1);
+        const bool hasDaily =
+                metricValue(metrics, QStringLiteral("framework.requests.daily")).isValid()
+                || metricValue(metrics, QStringLiteral("framework.events.daily")).isValid();
+        if (schema < 2 && !hasDaily) {
+            continue;
+        }
         quint64 req = metricCountU64(metrics, QStringLiteral("framework.requests.daily"));
         quint64 ev = metricCountU64(metrics, QStringLiteral("framework.events.daily"));
-        const int schema = snap.value(QStringLiteral("schema")).toInt(1);
-        if (schema < 2 && req == 0 && ev == 0) {
+        if (date == QDate::currentDate().toString(QStringLiteral("yyyy-MM-dd"))) {
             continue;
         }
         parsed.append(QVariantMap{
