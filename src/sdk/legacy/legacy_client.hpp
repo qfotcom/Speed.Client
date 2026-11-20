@@ -74,6 +74,9 @@ private:
     bool ops_push_poll_{false};
     bool ping_rtt_waiting_{false};
     QElapsedTimer *ping_rtt_timer_{nullptr};
+    /** 等待 PONG 时跳过下行 PUSH 等大帧占用的耗时，避免 Ping 显示虚高 */
+    qint64 ping_rtt_excluded_ms_{0};
+    qint64 ping_rtt_recv_exclude_mark_{-1};
 };
 
 } // namespace speed::client::legacy
