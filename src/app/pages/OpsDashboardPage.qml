@@ -39,14 +39,9 @@ Item {
 
     readonly property bool mobileHeatmap: ShadcnAppPlatform.isMobile
 
-    /** 近 7 日趋势：仅用 chart-* + 描边/混色，与 SenseDesign 折线图一致 */
-    readonly property color trendRequestsColor: ShadcnChartTheme.cartesianSeriesStrokeColor(
-                ShadcnTheme.c("chart-1"))
-    readonly property color trendEventsColor: ShadcnChartTheme.cartesianSeriesStrokeColor(
-                ShadcnStyles.mixWithForeground(ShadcnTheme.c("chart-2"),
-                                               ShadcnTheme.darkModeVisual ? 0.55 : 0.68))
-    readonly property color trendTotalColor: ShadcnChartTheme.cartesianSeriesStrokeColor(
-                ShadcnTheme.c("chart-3"))
+    /** 与 Demo「Line (multi series)」：chart-1 / chart-2 原色，避免混色后两条线难辨 */
+    readonly property color trendRequestsColor: ShadcnTheme.c("chart-1")
+    readonly property color trendEventsColor: ShadcnTheme.c("chart-2")
 
     function opsHeatmapTooltip(dayData, formatLongDate) {
         var c = dayData && dayData.count !== undefined ? Number(dayData.count) : 0
@@ -104,18 +99,15 @@ Item {
         var rows = trendRowsForChart()
         var reqVals = []
         var evVals = []
-        var sumVals = []
         for (var i = 0; i < rows.length; i++) {
             var req = rows[i].requests !== undefined ? Number(rows[i].requests) : 0
             var ev = rows[i].events_published !== undefined ? Number(rows[i].events_published) : 0
             reqVals.push(req)
             evVals.push(ev)
-            sumVals.push(req + ev)
         }
         if (reqVals.length === 0) {
             reqVals = [0]
             evVals = [0]
-            sumVals = [0]
         }
 
         if (metricFilter === "requests") {
@@ -132,6 +124,7 @@ Item {
                         color: root.trendEventsColor
                     }]
         }
+        /** Stacked area：两层即合计顶线，勿再画第三条「合计」折线 */
         return [
             {
                 label: qsTr("日请求量"),
@@ -142,11 +135,6 @@ Item {
                 label: qsTr("日事件量"),
                 values: evVals,
                 color: root.trendEventsColor
-            },
-            {
-                label: qsTr("合计"),
-                values: sumVals,
-                color: root.trendTotalColor
             }
         ]
     }
@@ -247,13 +235,15 @@ Item {
             Layout.fillWidth: true
             plotMountDelayMs: 0
             title: qsTr("近 7 日趋势")
-            description: qsTr("前 6 日：Daily 归档；当日：Snapshot framework.*.today")
+            description: metricFilter === "all"
+                         ? qsTr("日请求 vs 日事件 · 前 6 日 Daily，当日 Snapshot framework.*.today")
+                         : qsTr("前 6 日：Daily 归档；当日：Snapshot framework.*.today")
             showHeader: true
             chartType: "line"
             lineStyle: "straight"
-            showLineDots: metricFilter === "all"
             yAxisLabelsVisible: true
-            showLegend: metricFilter === "all"
+            showLegend: true
+            showLineDots: true
             categories: root.trendCategories
             series: root.trendSeries
         }

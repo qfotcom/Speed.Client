@@ -15,7 +15,8 @@ ShadcnChartDeferred {
     width: parent && parent.width > 0 ? parent.width : implicitWidth
     plotMountDelayMs: 0
     chartType: "line"
-    lineStyle: "stepLeft"
+    /** stepLeft 在 index 0 向左画水平段，易被 plot 左缘 clip；与滑动窗「新点在右」用 stepRight */
+    lineStyle: "stepRight"
     yAxisFixedRange: true
     yAxisFixedMin: 0
     yAxisFixedMax: 100
