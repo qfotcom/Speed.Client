@@ -19,15 +19,17 @@ Item {
     property var categoryHoverLabels: []
     property bool showTimeAxis: false
     property bool showLaneRule: true
+    /** 桌面双列卡片时略压行高，便于一屏看全五条 */
+    property bool compact: false
 
-    readonly property int labelColWidth: 112
-    readonly property int rowSpacing: 12
+    readonly property int labelColWidth: compact ? 96 : 112
+    readonly property int rowSpacing: compact ? 8 : 12
     /** 泳道灰框高度（不含与行间分隔线的空隙） */
-    readonly property int chartHeight: 80
+    readonly property int chartHeight: compact ? 56 : 80
     /** 灰框下缘与行间分隔线之间的呼吸间距 */
-    readonly property int beforeRuleGap: 8
+    readonly property int beforeRuleGap: compact ? 4 : 8
     readonly property int ruleHeight: showLaneRule ? 1 : 0
-    readonly property int rowGapBelow: showLaneRule ? 8 : 0
+    readonly property int rowGapBelow: showLaneRule ? (compact ? 6 : 8) : 0
     readonly property int laneBlockHeight: chartHeight + beforeRuleGap + ruleHeight + rowGapBelow
 
     implicitHeight: laneBlockHeight

@@ -92,6 +92,9 @@ Item {
     property var timeAxisLabels: []
     property var timeHoverLabels: []
 
+   /** 宽屏：泳道以小卡片双列排布，末行跨列放时间轴 */
+    readonly property bool laneCardGrid: !ShadcnAppPlatform.isMobile && root.width >= 560
+
     ClientMobilePage {
         id: page
         width: parent.width
@@ -101,80 +104,142 @@ Item {
 
         ShadcnCard {
             Layout.fillWidth: true
-            contentMargin: ShadcnAppPlatform.isMobile ? 14 : 20
+            contentMargin: ShadcnAppPlatform.isMobile ? 14 : 16
 
             ColumnLayout {
                 width: parent.width
-                spacing: 14
+                spacing: ShadcnAppPlatform.isMobile ? 12 : 10
 
                 RowLayout {
                     Layout.fillWidth: true
-                    spacing: 8
-                    ShadcnIcon { name: "activity"; size: 18 }
+                    visible: !ShadcnAppPlatform.isMobile
+                    spacing: 10
+
+                    ShadcnIcon { name: "activity"; size: 16 }
                     ShadcnLabel {
-                        Layout.fillWidth: true
-                        text: qsTr("此刻快照")
+                        text: qsTr("通道泳道")
                         font.weight: ShadcnTypography.fontWeightSemibold
+                        font.pixelSize: ShadcnTypography.fontSizeSm
+                    }
+
+                    Item { Layout.fillWidth: true }
+
+                    Flow {
+                        spacing: 6
+                        layoutDirection: Qt.RightToLeft
+                        ClientStatusBadge {
+                            text: ClientBackend.pushPollEnabled ? qsTr("PING 轮询开") : qsTr("PING 轮询关")
+                            tone: ClientBackend.pushPollEnabled ? "pending" : "neutral"
+                        }
+                        ClientStatusBadge {
+                            text: ClientBackend.legacySubscriptionActive ? qsTr("已订阅") : qsTr("未订阅")
+                            tone: ClientBackend.legacySubscriptionActive ? "success" : "neutral"
+                        }
+                        ClientStatusBadge {
+                            text: ClientBackend.legacyConnected ? qsTr("Legacy 在线") : qsTr("Legacy 离线")
+                            tone: ClientBackend.legacyConnected ? "success" : "danger"
+                            reserveActivitySlot: ClientBackend.legacyConnected
+                            activity: ClientBackend.legacyConnected && ClientBackend.legacyBusy
+                        }
                     }
                 }
 
-                Flow {
+                ColumnLayout {
                     Layout.fillWidth: true
+                    visible: ShadcnAppPlatform.isMobile
                     spacing: 8
-                    ClientStatusBadge {
-                        text: ClientBackend.legacyConnected ? qsTr("Legacy 在线") : qsTr("Legacy 离线")
-                        tone: ClientBackend.legacyConnected ? "success" : "danger"
-                        reserveActivitySlot: ClientBackend.legacyConnected
-                        activity: ClientBackend.legacyConnected && ClientBackend.legacyBusy
+
+                    RowLayout {
+                        spacing: 8
+                        ShadcnIcon { name: "activity"; size: 16 }
+                        ShadcnLabel {
+                            text: qsTr("通道泳道")
+                            font.weight: ShadcnTypography.fontWeightSemibold
+                            font.pixelSize: ShadcnTypography.fontSizeSm
+                        }
                     }
-                    ClientStatusBadge {
-                        text: ClientBackend.legacySubscriptionActive ? qsTr("已订阅") : qsTr("未订阅")
-                        tone: ClientBackend.legacySubscriptionActive ? "success" : "neutral"
-                    }
-                    ClientStatusBadge {
-                        text: ClientBackend.pushPollEnabled ? qsTr("PING 轮询开") : qsTr("PING 轮询关")
-                        tone: ClientBackend.pushPollEnabled ? "pending" : "neutral"
-                    }
-                }
 
-            }
-        }
-
-        ShadcnCard {
-            Layout.fillWidth: true
-            contentMargin: ShadcnAppPlatform.isMobile ? 14 : 20
-
-            ColumnLayout {
-                width: parent.width
-                spacing: 10
-
-                ShadcnLabel {
-                    Layout.fillWidth: true
-                    text: qsTr("通道泳道")
-                    font.weight: ShadcnTypography.fontWeightMedium
-                    font.pixelSize: ShadcnTypography.fontSizeSm
-                }
-
-                Repeater {
-                    id: laneRepeater
-                    model: root.channelRows.length
-
-                    ClientChannelSparkRow {
-                        required property int index
-                        readonly property var row: root.channelRows[index]
+                    Flow {
                         Layout.fillWidth: true
+                        spacing: 6
+                        ClientStatusBadge {
+                            text: ClientBackend.legacyConnected ? qsTr("Legacy 在线") : qsTr("Legacy 离线")
+                            tone: ClientBackend.legacyConnected ? "success" : "danger"
+                            reserveActivitySlot: ClientBackend.legacyConnected
+                            activity: ClientBackend.legacyConnected && ClientBackend.legacyBusy
+                        }
+                        ClientStatusBadge {
+                            text: ClientBackend.legacySubscriptionActive ? qsTr("已订阅") : qsTr("未订阅")
+                            tone: ClientBackend.legacySubscriptionActive ? "success" : "neutral"
+                        }
+                        ClientStatusBadge {
+                            text: ClientBackend.pushPollEnabled ? qsTr("PING 轮询开") : qsTr("PING 轮询关")
+                            tone: ClientBackend.pushPollEnabled ? "pending" : "neutral"
+                        }
+                    }
+                }
 
-                        channelLabel: row ? row.label : ""
-                        channelOn: row ? row.on : false
-                        channelTone: row ? row.tone : "neutral"
-                        channelActivity: row ? row.activity : false
-                        seriesColor: row ? row.color : ShadcnTheme.c("chart-1")
-                        values: row ? row.values : [0]
-                        categories: root.statusSlotCategories
-                        categoryHoverLabels: root.timeHoverLabels
-                        categoryAxisLabels: root.timeAxisLabels
-                        showTimeAxis: index === laneRepeater.count - 1
-                        showLaneRule: index < laneRepeater.count - 1
+                GridLayout {
+                    id: laneGrid
+                    Layout.fillWidth: true
+                    columns: root.laneCardGrid ? 2 : 1
+                    columnSpacing: root.laneCardGrid ? 10 : 0
+                    rowSpacing: root.laneCardGrid ? 10 : 0
+
+                    Repeater {
+                        id: laneRepeater
+                        model: root.channelRows.length
+
+                        Item {
+                            required property int index
+                            readonly property var row: root.channelRows[index]
+                            Layout.fillWidth: true
+                            Layout.columnSpan: root.laneCardGrid && index === laneRepeater.count - 1 ? 2 : 1
+                            implicitHeight: root.laneCardGrid ? laneTileCard.implicitHeight
+                                               : laneListRow.implicitHeight
+
+                            ShadcnCard {
+                                id: laneTileCard
+                                visible: root.laneCardGrid
+                                width: parent.width
+                                compactInner: true
+                                contentMargin: 10
+
+                                ClientChannelSparkRow {
+                                    width: parent.width
+                                    compact: true
+                                    showLaneRule: false
+                                    channelLabel: row ? row.label : ""
+                                    channelOn: row ? row.on : false
+                                    channelTone: row ? row.tone : "neutral"
+                                    channelActivity: row ? row.activity : false
+                                    seriesColor: row ? row.color : ShadcnTheme.c("chart-1")
+                                    values: row ? row.values : [0]
+                                    categories: root.statusSlotCategories
+                                    categoryHoverLabels: root.timeHoverLabels
+                                    categoryAxisLabels: root.timeAxisLabels
+                                    showTimeAxis: index === laneRepeater.count - 1
+                                }
+                            }
+
+                            ClientChannelSparkRow {
+                                id: laneListRow
+                                visible: !root.laneCardGrid
+                                width: parent.width
+                                compact: ShadcnAppPlatform.isMobile
+                                channelLabel: row ? row.label : ""
+                                channelOn: row ? row.on : false
+                                channelTone: row ? row.tone : "neutral"
+                                channelActivity: row ? row.activity : false
+                                seriesColor: row ? row.color : ShadcnTheme.c("chart-1")
+                                values: row ? row.values : [0]
+                                categories: root.statusSlotCategories
+                                categoryHoverLabels: root.timeHoverLabels
+                                categoryAxisLabels: root.timeAxisLabels
+                                showTimeAxis: index === laneRepeater.count - 1
+                                showLaneRule: index < laneRepeater.count - 1
+                            }
+                        }
                     }
                 }
 
@@ -186,15 +251,15 @@ Item {
                     text: qsTr("固定 %1 格 · 新秒自右进入；「清空」后五行归零，随后按秒重采样。")
                         .arg(ClientBackend.statusHistorySeconds)
                 }
-            }
-        }
 
-        ShadcnButton {
-            Layout.fillWidth: true
-            variant: "outline"
-            iconName: "eraser"
-            text: qsTr("清空波形历史")
-            onClicked: ClientBackend.clearStatusHistory()
+                ShadcnButton {
+                    Layout.fillWidth: true
+                    variant: "outline"
+                    iconName: "eraser"
+                    text: qsTr("清空波形历史")
+                    onClicked: ClientBackend.clearStatusHistory()
+                }
+            }
         }
     }
 
