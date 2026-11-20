@@ -69,6 +69,7 @@ Item {
                     activity: root.channelActivity
                     /** 与快照区 Legacy 一致：点灭也占位，避免开/关胶囊宽度来回缩 */
                     reserveActivitySlot: true
+                    showStatusDot: true
                 }
             }
         }

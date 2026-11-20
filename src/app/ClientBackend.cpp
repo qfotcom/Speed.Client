@@ -823,7 +823,6 @@ void ClientBackend::clearStatusHistory()
     plot_subscription_.clear();
     rebuildStatusChartSeries();
     Q_EMIT statusChartChanged();
-    sampleStatusPoint();
 }
 
 bool ClientBackend::restHealthOk() const
@@ -850,7 +849,8 @@ void ClientBackend::sampleStatusPoint()
         !status_time_labels_.isEmpty() && status_time_labels_.constLast() == label;
     if (sameSecond) {
         legacy_conn_history_.last() = conn;
-        legacy_busy_history_.last() = busy;
+        // 同一秒内出现过传输即记为 1，避免多次 sample 把短脉冲抹成 0
+        legacy_busy_history_.last() = qMax(legacy_busy_history_.last(), busy);
         rest_ok_history_.last() = restOk;
         push_poll_history_.last() = poll;
         subscription_history_.last() = sub;
@@ -888,11 +888,6 @@ void ClientBackend::rebuildStatusChartSeries()
     plot_push_poll_.clear();
     plot_subscription_.clear();
 
-    if (count <= 0) {
-        status_chart_series_ = QVariantList();
-        return;
-    }
-
     plot_time_labels_.reserve(window);
     plot_legacy_conn_.reserve(window);
     plot_legacy_busy_.reserve(window);
@@ -900,25 +895,36 @@ void ClientBackend::rebuildStatusChartSeries()
     plot_push_poll_.reserve(window);
     plot_subscription_.reserve(window);
 
-    const int used = qMin(count, window);
-    const int pad = window - used;
-    const int dataStart = count - used;
+    if (count <= 0) {
+        for (int s = 0; s < window; ++s) {
+            plot_time_labels_.append(QString());
+            plot_legacy_conn_.append(0.0);
+            plot_legacy_busy_.append(0.0);
+            plot_rest_ok_.append(0.0);
+            plot_push_poll_.append(0.0);
+            plot_subscription_.append(0.0);
+        }
+    } else {
+        const int used = qMin(count, window);
+        const int pad = window - used;
+        const int dataStart = count - used;
 
-    for (int s = 0; s < pad; ++s) {
-        plot_time_labels_.append(QString());
-        plot_legacy_conn_.append(kStatusPlotNoData);
-        plot_legacy_busy_.append(kStatusPlotNoData);
-        plot_rest_ok_.append(kStatusPlotNoData);
-        plot_push_poll_.append(kStatusPlotNoData);
-        plot_subscription_.append(kStatusPlotNoData);
-    }
-    for (int i = dataStart; i < count; ++i) {
-        plot_time_labels_.append(status_time_labels_.at(i));
-        plot_legacy_conn_.append(legacy_conn_history_.at(i));
-        plot_legacy_busy_.append(legacy_busy_history_.at(i));
-        plot_rest_ok_.append(rest_ok_history_.at(i));
-        plot_push_poll_.append(push_poll_history_.at(i));
-        plot_subscription_.append(subscription_history_.at(i));
+        for (int s = 0; s < pad; ++s) {
+            plot_time_labels_.append(QString());
+            plot_legacy_conn_.append(kStatusPlotNoData);
+            plot_legacy_busy_.append(kStatusPlotNoData);
+            plot_rest_ok_.append(kStatusPlotNoData);
+            plot_push_poll_.append(kStatusPlotNoData);
+            plot_subscription_.append(kStatusPlotNoData);
+        }
+        for (int i = dataStart; i < count; ++i) {
+            plot_time_labels_.append(status_time_labels_.at(i));
+            plot_legacy_conn_.append(legacy_conn_history_.at(i));
+            plot_legacy_busy_.append(legacy_busy_history_.at(i));
+            plot_rest_ok_.append(rest_ok_history_.at(i));
+            plot_push_poll_.append(push_poll_history_.at(i));
+            plot_subscription_.append(subscription_history_.at(i));
+        }
     }
 
     auto toVariantList = [](const QVector<double> &values) {

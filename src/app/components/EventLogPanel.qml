@@ -12,6 +12,8 @@ ShadcnCard {
     property string searchQuery: ""
     property int currentPage: 1
     property int pageSize: ShadcnAppPlatform.isMobile ? 6 : 10
+    /** >0 指定列表视口高度；-1 用平台默认 */
+    property int logViewportHeight: -1
 
     readonly property var pageSizeOptions: [6, 10, 20, 50]
     readonly property var pageSizeLabels: [qsTr("6 条"), qsTr("10 条"), qsTr("20 条"), qsTr("50 条")]
@@ -20,7 +22,9 @@ ShadcnCard {
     clip: true
     contentMargin: ShadcnAppPlatform.isMobile ? 14 : 20
 
-    readonly property int _logViewportHeight: ShadcnAppPlatform.isMobile ? 280 : 240
+    readonly property int _logViewportHeight: logViewportHeight > 0
+            ? logViewportHeight
+            : (ShadcnAppPlatform.isMobile ? 300 : 400)
 
     property var filteredModel: []
     property var pageModel: []

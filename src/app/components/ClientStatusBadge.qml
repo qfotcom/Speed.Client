@@ -16,8 +16,22 @@ Control {
     property bool activity: false
     /** 为活动点预留宽度，避免亮/灭时胶囊左右伸缩 */
     property bool reserveActivitySlot: false
+    /** 常驻状态点（开/关泳道）；与 activity 脉冲并存，脉冲时优先闪动 */
+    property bool showStatusDot: false
 
-    readonly property bool _showDotSlot: reserveActivitySlot || control._activityVisible
+    readonly property bool _showDotSlot: reserveActivitySlot || showStatusDot
+            || control._activityVisible
+    readonly property real _staticDotOpacity: {
+        switch (control.tone) {
+        case "success":
+        case "danger":
+            return 1
+        case "pending":
+            return 0.78
+        default:
+            return ShadcnTheme.darkMode ? 0.62 : 0.52
+        }
+    }
     readonly property int _dotSlotWidth: _showDotSlot ? 6 : 0
     readonly property int _dotGap: _showDotSlot ? 5 : 0
 
@@ -98,7 +112,8 @@ Control {
                     height: 6
                     radius: 3
                     color: control._colors.dot
-                    opacity: control._activityVisible ? pulseLevel : 0
+                    opacity: control._activityVisible ? pulseLevel
+                            : (control.showStatusDot ? control._staticDotOpacity : 0)
 
                     property real pulseLevel: 0.7
 

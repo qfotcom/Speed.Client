@@ -256,8 +256,8 @@ Item {
                            ? qsTr("Legacy 已连接")
                            : qsTr("Legacy 未连接")
                     description: ClientBackend.legacyConnected
-                                 ? qsTr("REST 走 %1，与 Legacy 主机无关。").arg(ClientBackend.restEndpoint)
-                                 : qsTr("请检查主机与端口；仍显示旧 cpolar 地址时点「生产默认」。")
+                           ? ""
+                           : qsTr("请检查主机与端口；仍显示旧 cpolar 地址时点「生产默认」。")
                 }
             }
         }
@@ -266,6 +266,8 @@ Item {
             Layout.fillWidth: true
             model: ClientBackend.eventLog
             startExpanded: true
+            /** 连接页配置区较高，日志区多留竖直空间 */
+            logViewportHeight: ShadcnAppPlatform.isMobile ? -1 : 480
         }
     }
 }

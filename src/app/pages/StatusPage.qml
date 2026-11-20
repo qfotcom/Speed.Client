@@ -33,6 +33,11 @@ Item {
         return !isNaN(v) && v >= 50
     }
 
+    /** 泳道开/关：与波形末格一致（每秒历史），不用即时 busy/开关叠加 */
+    function channelSampleOn(values) {
+        return lastSampleOn(values)
+    }
+
     /** 后端空槽为 NaN；Graphs 阶梯线在 NaN 下常不画线，泳道统一成 0（关） */
     function sanitizePlotValues(values) {
         if (!values || values.length === 0) {
@@ -51,32 +56,11 @@ Item {
         var axis = ClientBackend.statusChartAxisLabels
         var hover = ClientBackend.statusChartHoverLabels
         var defs = [
-            {
-                label: qsTr("Legacy TCP"),
-                tone: ClientBackend.legacyConnected ? "success" : "danger",
-                activity: ClientBackend.legacyConnected && ClientBackend.legacyBusy
-            },
-            {
-                label: qsTr("Legacy 传输"),
-                tone: "neutral",
-                activity: ClientBackend.legacyConnected && ClientBackend.legacyBusy
-            },
-            {
-                label: qsTr("REST /health"),
-                tone: lastSampleOn(raw && raw.length > 2 ? raw[2].values : [])
-                           ? "success" : "neutral",
-                activity: false
-            },
-            {
-                label: qsTr("订阅意图"),
-                tone: ClientBackend.legacySubscriptionActive ? "success" : "neutral",
-                activity: false
-            },
-            {
-                label: qsTr("轮询 PING"),
-                tone: ClientBackend.pushPollEnabled ? "pending" : "neutral",
-                activity: ClientBackend.pushPollEnabled && ClientBackend.legacyConnected
-            }
+            { label: qsTr("Legacy TCP") },
+            { label: qsTr("Legacy 传输") },
+            { label: qsTr("REST /health") },
+            { label: qsTr("订阅意图") },
+            { label: qsTr("轮询 PING") }
         ]
 
         var rows = []
@@ -84,10 +68,11 @@ Item {
             var def = defs[i]
             var entry = raw && i < raw.length ? raw[i] : null
             var vals = sanitizePlotValues(entry && entry.values ? entry.values : [0])
-            var on = lastSampleOn(vals)
-            var tone = def.tone
-            // 与波形「开」一致：原为 pending 灰，文案却显示开
-            if (i === 1)
+            var on = channelSampleOn(vals)
+            var tone
+            if (i === 0 && !ClientBackend.legacyConnected)
+                tone = "danger"
+            else
                 tone = on ? "success" : "neutral"
             rows.push({
                         label: def.label,
@@ -95,7 +80,8 @@ Item {
                         color: channelPalette[i % channelPalette.length],
                         on: on,
                         tone: tone,
-                        activity: def.activity
+                        /** 泳道区不用即时脉冲；「此刻快照」区单独展示 legacyBusy */
+                        activity: false
                     })
         }
         channelRows = rows
@@ -197,7 +183,7 @@ Item {
                     font.pixelSize: ShadcnTypography.fontSizeXs
                     color: ShadcnTheme.c("muted-foreground")
                     wrapMode: Text.WordWrap
-                    text: qsTr("固定 %1 格 · 新秒自右进入；新连接 REST/health 后「REST」阶梯可能短暂由 0→100。")
+                    text: qsTr("固定 %1 格 · 新秒自右进入；「清空」后五行归零，随后按秒重采样。")
                         .arg(ClientBackend.statusHistorySeconds)
                 }
             }
@@ -216,7 +202,6 @@ Item {
         target: ClientBackend
         function onStatusChartChanged() { root.rebuildChannelRows() }
         function onLegacyConnectedChanged() { root.rebuildChannelRows() }
-        function onLegacyBusyChanged() { root.rebuildChannelRows() }
         function onLegacySubscriptionActiveChanged() { root.rebuildChannelRows() }
         function onPushPollEnabledChanged() { root.rebuildChannelRows() }
     }
