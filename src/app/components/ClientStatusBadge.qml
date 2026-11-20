@@ -70,9 +70,13 @@ Control {
             }
         default:
             return {
-                bg: "transparent",
+                bg: ShadcnTheme.darkMode
+                        ? ShadcnStyles.withAlpha(ShadcnTheme.c("muted"), 0.38)
+                        : "transparent",
                 fg: ShadcnTheme.c("muted-foreground"),
-                border: ShadcnTheme.c("border"),
+                border: ShadcnTheme.darkMode
+                        ? ShadcnStyles.withAlpha(ShadcnTheme.c("muted-foreground"), 0.48)
+                        : ShadcnTheme.c("border"),
                 dot: ShadcnTheme.c("muted-foreground")
             }
         }

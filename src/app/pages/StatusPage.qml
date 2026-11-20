@@ -7,61 +7,110 @@ import "../components"
 Item {
     id: root
     property string pageId: "status"
-    /** 分通道图 X 轴类目（与多通道图同步，避免 delegate 里每次调函数） */
-    property var statusCategoriesCached: []
-    property var statusHoverLabelsCached: []
+
     readonly property var statusSlotCategories: ["s0", "s1", "s2", "s3", "s4"]
-    /** ListModel 不支持 color / 数组 role；用固定数量 Repeater + 缓存行数据 */
-    property var channelSeriesCache: []
+
+    /** 与 ClientBackend::rebuildStatusChartSeries 顺序一致；配色拉开，避免五条蓝线糊在一起 */
+    readonly property var channelPalette: [
+        ShadcnTheme.c("chart-1"),
+        ShadcnTheme.c("chart-2"),
+        "#c084fc",
+        "#fbbf24",
+        ShadcnStyles.mixWithForeground(ShadcnTheme.c("muted-foreground"), 0.35)
+    ]
+
+    property var channelRows: []
 
     width: parent && parent.width > 0 ? parent.width : 360
     implicitWidth: width
     implicitHeight: page.implicitHeight
 
-  readonly property bool showPerChannelCharts: ShadcnAppPlatform.isMobile || width >= 520
+    function lastSampleOn(values) {
+        if (!values || values.length === 0) {
+            return false
+        }
+        var v = Number(values[values.length - 1])
+        return !isNaN(v) && v >= 50
+    }
 
-    function statusSeriesForChart() {
-        var raw = ClientBackend.statusChartSeries
+    /** 后端空槽为 NaN；Graphs 阶梯线在 NaN 下常不画线，泳道统一成 0（关） */
+    function sanitizePlotValues(values) {
+        if (!values || values.length === 0) {
+            return [0]
+        }
         var out = []
-        if (!raw || raw.length === 0) {
-            return [{
-                        label: qsTr("等待采样"),
-                        values: [0],
-                        color: ShadcnTheme.c("chart-1")
-                    }]
+        for (var i = 0; i < values.length; ++i) {
+            var v = Number(values[i])
+            out.push(isNaN(v) ? 0 : v)
         }
-        for (var i = 0; i < raw.length; i++) {
-            var s = raw[i]
-            var vals = s.values && s.values.length > 0 ? s.values : [0]
-            var token = s.color || ("chart-" + ((i % 5) + 1))
-            out.push({
-                         label: s.label || qsTr("通道"),
-                         values: vals,
-                         color: ShadcnTheme.c(token)
-                     })
-        }
-        return out.length > 0 ? out : [{
-                                             label: qsTr("等待采样"),
-                                             values: [0],
-                                             color: ShadcnTheme.c("chart-1")
-                                         }]
+        return out
     }
 
-    function applyStatusCharts() {
-        var series = statusSeriesForChart()
-        statusChart.series = series
-        statusChart.categoryAxisLabels = ClientBackend.statusChartAxisLabels
-        statusChart.categoryHoverLabels = ClientBackend.statusChartHoverLabels
-        statusCategoriesCached = ClientBackend.statusChartAxisLabels
-        statusHoverLabelsCached = ClientBackend.statusChartHoverLabels
-        channelSeriesCache = series
+    function rebuildChannelRows() {
+        var raw = ClientBackend.statusChartSeries
+        var axis = ClientBackend.statusChartAxisLabels
+        var hover = ClientBackend.statusChartHoverLabels
+        var defs = [
+            {
+                label: qsTr("Legacy TCP"),
+                tone: ClientBackend.legacyConnected ? "success" : "danger",
+                activity: ClientBackend.legacyConnected && ClientBackend.legacyBusy
+            },
+            {
+                label: qsTr("Legacy 传输"),
+                tone: "neutral",
+                activity: ClientBackend.legacyConnected && ClientBackend.legacyBusy
+            },
+            {
+                label: qsTr("REST /health"),
+                tone: lastSampleOn(raw && raw.length > 2 ? raw[2].values : [])
+                           ? "success" : "neutral",
+                activity: false
+            },
+            {
+                label: qsTr("订阅意图"),
+                tone: ClientBackend.legacySubscriptionActive ? "success" : "neutral",
+                activity: false
+            },
+            {
+                label: qsTr("轮询 PING"),
+                tone: ClientBackend.pushPollEnabled ? "pending" : "neutral",
+                activity: ClientBackend.pushPollEnabled && ClientBackend.legacyConnected
+            }
+        ]
+
+        var rows = []
+        for (var i = 0; i < defs.length; i++) {
+            var def = defs[i]
+            var entry = raw && i < raw.length ? raw[i] : null
+            var vals = sanitizePlotValues(entry && entry.values ? entry.values : [0])
+            var on = lastSampleOn(vals)
+            var tone = def.tone
+            // 与波形「开」一致：原为 pending 灰，文案却显示开
+            if (i === 1)
+                tone = on ? "success" : "neutral"
+            rows.push({
+                        label: def.label,
+                        values: vals,
+                        color: channelPalette[i % channelPalette.length],
+                        on: on,
+                        tone: tone,
+                        activity: def.activity
+                    })
+        }
+        channelRows = rows
+        timeAxisLabels = axis
+        timeHoverLabels = hover
     }
+
+    property var timeAxisLabels: []
+    property var timeHoverLabels: []
 
     ClientMobilePage {
         id: page
         width: parent.width
         title: qsTr("客户端通道")
-        subtitle: qsTr("最近 %1 秒滑动窗，每秒采样；点按曲线查看该时刻各通道。")
+        subtitle: qsTr("最近 %1 秒滑动窗，每秒采样；点按波形查看该秒各通道。")
             .arg(ClientBackend.statusHistorySeconds)
 
         ShadcnCard {
@@ -70,7 +119,7 @@ Item {
 
             ColumnLayout {
                 width: parent.width
-                spacing: 12
+                spacing: 14
 
                 RowLayout {
                     Layout.fillWidth: true
@@ -78,7 +127,7 @@ Item {
                     ShadcnIcon { name: "activity"; size: 18 }
                     ShadcnLabel {
                         Layout.fillWidth: true
-                        text: qsTr("当前快照")
+                        text: qsTr("此刻快照")
                         font.weight: ShadcnTypography.fontWeightSemibold
                     }
                 }
@@ -105,22 +154,8 @@ Item {
             }
         }
 
-        ClientStatusStepChart {
-            id: statusChart
-            categories: root.statusSlotCategories
-            categoryHoverLabels: ClientBackend.statusChartHoverLabels
-            categoryAxisLabels: ClientBackend.statusChartAxisLabels
-            Layout.fillWidth: true
-            Layout.preferredHeight: implicitHeight > 0 ? implicitHeight : 280
-            title: qsTr("多通道时序")
-            description: qsTr("图例为通道名称；Y 轴 0 / 100 表示关 / 开")
-            footerText: qsTr("固定 %1 格：新秒在右侧进入，满窗后左侧滑出；在线多为 100 平线。")
-                .arg(ClientBackend.statusHistorySeconds)
-        }
-
         ShadcnCard {
             Layout.fillWidth: true
-            visible: showPerChannelCharts
             contentMargin: ShadcnAppPlatform.isMobile ? 14 : 20
 
             ColumnLayout {
@@ -129,39 +164,41 @@ Item {
 
                 ShadcnLabel {
                     Layout.fillWidth: true
-                    text: qsTr("分通道 Step")
+                    text: qsTr("通道泳道")
                     font.weight: ShadcnTypography.fontWeightMedium
+                    font.pixelSize: ShadcnTypography.fontSizeSm
                 }
 
-                Item {
-                    Layout.fillWidth: true
-                    implicitHeight: channelColumn.implicitHeight
+                Repeater {
+                    id: laneRepeater
+                    model: root.channelRows.length
 
-                    Column {
-                        id: channelColumn
-                        width: parent.width
-                        spacing: 14
+                    ClientChannelSparkRow {
+                        required property int index
+                        readonly property var row: root.channelRows[index]
+                        Layout.fillWidth: true
 
-                        Repeater {
-                            model: root.channelSeriesCache.length
-
-                            ClientStatusStepChart {
-                                required property int index
-                                readonly property var row: root.channelSeriesCache[index]
-                                width: channelColumn.width
-                                categories: root.statusSlotCategories
-                                categoryHoverLabels: ClientBackend.statusChartHoverLabels
-                                categoryAxisLabels: ClientBackend.statusChartAxisLabels
-                                immediatePlot: true
-                                title: row ? row.label : ""
-                                seriesLabel: row ? row.label : ""
-                                seriesColor: row ? row.color : ShadcnTheme.c("chart-1")
-                                values: row && row.values ? row.values : [0]
-                                description: ""
-                                showLegend: false
-                            }
-                        }
+                        channelLabel: row ? row.label : ""
+                        channelOn: row ? row.on : false
+                        channelTone: row ? row.tone : "neutral"
+                        channelActivity: row ? row.activity : false
+                        seriesColor: row ? row.color : ShadcnTheme.c("chart-1")
+                        values: row ? row.values : [0]
+                        categories: root.statusSlotCategories
+                        categoryHoverLabels: root.timeHoverLabels
+                        categoryAxisLabels: root.timeAxisLabels
+                        showTimeAxis: index === laneRepeater.count - 1
+                        showLaneRule: index < laneRepeater.count - 1
                     }
+                }
+
+                ShadcnLabel {
+                    Layout.fillWidth: true
+                    font.pixelSize: ShadcnTypography.fontSizeXs
+                    color: ShadcnTheme.c("muted-foreground")
+                    wrapMode: Text.WordWrap
+                    text: qsTr("固定 %1 格 · 新秒自右进入；新连接 REST/health 后「REST」阶梯可能短暂由 0→100。")
+                        .arg(ClientBackend.statusHistorySeconds)
                 }
             }
         }
@@ -177,10 +214,12 @@ Item {
 
     Connections {
         target: ClientBackend
-        function onStatusChartChanged() {
-            root.applyStatusCharts()
-        }
+        function onStatusChartChanged() { root.rebuildChannelRows() }
+        function onLegacyConnectedChanged() { root.rebuildChannelRows() }
+        function onLegacyBusyChanged() { root.rebuildChannelRows() }
+        function onLegacySubscriptionActiveChanged() { root.rebuildChannelRows() }
+        function onPushPollEnabledChanged() { root.rebuildChannelRows() }
     }
 
-    Component.onCompleted: applyStatusCharts()
+    Component.onCompleted: rebuildChannelRows()
 }

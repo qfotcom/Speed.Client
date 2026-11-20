@@ -67,6 +67,8 @@ qt_add_qml_module(SpeedClient
         components/ClientStatusBadge.qml
         components/ClientValueTierBadge.qml
         components/ClientStatusStepChart.qml
+        components/ClientChannelSparkRow.qml
+        components/ClientChannelStepLane.qml
         components/ClientStatusAlert.qml
         components/ClientHttpStatus.js
         components/EventLogPanel.qml
