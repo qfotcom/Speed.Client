@@ -17,6 +17,8 @@ namespace speed::client::rest {
 class RestClient;
 }
 
+#include "config/client_settings.hpp"
+
 class ClientBackend : public QObject
 {
     Q_OBJECT
@@ -30,6 +32,11 @@ class ClientBackend : public QObject
     Q_PROPERTY(bool restUseHttps READ restUseHttps WRITE setRestUseHttps NOTIFY restUseHttpsChanged)
     Q_PROPERTY(bool autoConnectOnStartup READ autoConnectOnStartup WRITE setAutoConnectOnStartup
                    NOTIFY autoConnectOnStartupChanged)
+    Q_PROPERTY(bool proxyEnabled READ proxyEnabled WRITE setProxyEnabled NOTIFY proxySettingsChanged)
+    Q_PROPERTY(QString proxyHost READ proxyHost WRITE setProxyHost NOTIFY proxySettingsChanged)
+    Q_PROPERTY(int proxyPort READ proxyPort WRITE setProxyPort NOTIFY proxySettingsChanged)
+    Q_PROPERTY(bool proxySocks5 READ proxySocks5 WRITE setProxySocks5 NOTIFY proxySettingsChanged)
+    Q_PROPERTY(QString proxySummary READ proxySummary NOTIFY proxySettingsChanged)
     Q_PROPERTY(QString subscribeTopic READ subscribeTopic WRITE setSubscribeTopic NOTIFY
                    subscribeTopicChanged)
     Q_PROPERTY(QString echoText READ echoText WRITE setEchoText NOTIFY echoTextChanged)
@@ -102,6 +109,11 @@ public:
     int restPort() const;
     bool restUseHttps() const;
     bool autoConnectOnStartup() const;
+    bool proxyEnabled() const;
+    QString proxyHost() const;
+    int proxyPort() const;
+    bool proxySocks5() const;
+    QString proxySummary() const;
     QString subscribeTopic() const;
     QString echoText() const;
     bool legacyConnected() const;
@@ -158,11 +170,17 @@ public:
     void setRestPort(int value);
     void setRestUseHttps(bool value);
     void setAutoConnectOnStartup(bool value);
+    void setProxyEnabled(bool value);
+    void setProxyHost(const QString &value);
+    void setProxyPort(int value);
+    void setProxySocks5(bool value);
     void setSubscribeTopic(const QString &value);
     void setEchoText(const QString &value);
     void setPushPollEnabled(bool value);
 
     Q_INVOKABLE void saveSettings();
+    /** 应用并保存代理，必要时重连 Legacy / 刷新 REST */
+    Q_INVOKABLE void applyProxySettings();
     Q_INVOKABLE void connectLegacy();
     Q_INVOKABLE void disconnectLegacy();
     Q_INVOKABLE void legacyPing();
@@ -189,6 +207,7 @@ Q_SIGNALS:
     void restPortChanged();
     void restUseHttpsChanged();
     void autoConnectOnStartupChanged();
+    void proxySettingsChanged();
     void subscribeTopicChanged();
     void echoTextChanged();
     void legacyConnectedChanged();
@@ -235,6 +254,9 @@ private:
     bool restHealthOk() const;
     void appendLog(const QString &line);
     void applyEndpoints();
+    void syncNetworkProxy();
+    speed::client::ClientSettings buildSettingsSnapshot() const;
+    void reconnectChannelsAfterProxyChange();
     /** delayMs < 0 时使用 reconnect_backoff_ms_（连接失败退避） */
     void scheduleAutoReconnect(int delayMs = -1);
     void runAutoConnect(const QString &reason); // Legacy TCP + REST /health（启动/手动）
@@ -260,6 +282,10 @@ private:
     int rest_port_{443};
     bool rest_use_https_{true};
     bool auto_connect_on_startup_{true};
+    bool proxy_enabled_{false};
+    QString proxy_host_{QStringLiteral("127.0.0.1")};
+    int proxy_port_{7890};
+    bool proxy_socks5_{true};
     bool manual_legacy_disconnect_{false};
     bool startup_connect_done_{false};
     QString subscribe_topic_;

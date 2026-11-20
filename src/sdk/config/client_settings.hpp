@@ -13,6 +13,12 @@ struct ClientSettings {
     QString subscribe_topic{QStringLiteral("quote.test")};
     QString echo_text{QStringLiteral("world")};
     bool auto_connect_on_startup{true};
+    /** 默认关闭：不使用本机代理 */
+    bool proxy_enabled{false};
+    QString proxy_host{QStringLiteral("127.0.0.1")};
+    quint16 proxy_port{7890};
+    /** true = SOCKS5（推荐，Legacy TCP + REST 共用）；false = HTTP 代理 */
+    bool proxy_socks5{true};
 
     static ClientSettings load();
     void save() const;

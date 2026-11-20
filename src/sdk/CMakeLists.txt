@@ -5,6 +5,7 @@ add_library(speed_client_sdk STATIC
     legacy/legacy_client.cpp
     rest/rest_client.cpp
     config/client_settings.cpp
+    config/network_proxy.cpp
 )
 
 target_include_directories(speed_client_sdk

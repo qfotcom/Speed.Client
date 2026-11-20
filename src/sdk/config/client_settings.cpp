@@ -127,6 +127,13 @@ ClientSettings ClientSettings::load()
     cfg.auto_connect_on_startup =
         settings.value(QStringLiteral("auto_connect_on_startup"), true).toBool();
 
+    cfg.proxy_enabled = settings.value(QStringLiteral("proxy_enabled"), false).toBool();
+    cfg.proxy_host =
+        settings.value(QStringLiteral("proxy_host"), QStringLiteral("127.0.0.1")).toString();
+    cfg.proxy_port = static_cast<quint16>(
+        settings.value(QStringLiteral("proxy_port"), 7890).toUInt());
+    cfg.proxy_socks5 = settings.value(QStringLiteral("proxy_socks5"), true).toBool();
+
     if (isArchivedCpolarEndpoints(cfg)) {
         const ClientSettings prod = productionDefaults();
         cfg.legacy_host = prod.legacy_host;
@@ -152,6 +159,10 @@ void ClientSettings::save() const
     settings.setValue(QStringLiteral("subscribe_topic"), subscribe_topic);
     settings.setValue(QStringLiteral("echo_text"), echo_text);
     settings.setValue(QStringLiteral("auto_connect_on_startup"), auto_connect_on_startup);
+    settings.setValue(QStringLiteral("proxy_enabled"), proxy_enabled);
+    settings.setValue(QStringLiteral("proxy_host"), proxy_host);
+    settings.setValue(QStringLiteral("proxy_port"), proxy_port);
+    settings.setValue(QStringLiteral("proxy_socks5"), proxy_socks5);
     settings.setValue(QStringLiteral("endpoints_schema"), 2);
     settings.sync();
 }

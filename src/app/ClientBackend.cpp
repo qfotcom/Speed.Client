@@ -12,6 +12,7 @@
 #include <QVariantMap>
 
 #include "config/client_settings.hpp"
+#include "config/network_proxy.hpp"
 #include "legacy/legacy_client.hpp"
 #include "rest/rest_client.hpp"
 
@@ -76,7 +77,12 @@ ClientBackend::ClientBackend(QObject *parent)
     subscribe_topic_ = cfg.subscribe_topic;
     echo_text_ = cfg.echo_text;
     auto_connect_on_startup_ = cfg.auto_connect_on_startup;
+    proxy_enabled_ = cfg.proxy_enabled;
+    proxy_host_ = cfg.proxy_host;
+    proxy_port_ = cfg.proxy_port;
+    proxy_socks5_ = cfg.proxy_socks5;
     applyEndpoints();
+    syncNetworkProxy();
 
     status_slot_categories_.reserve(kStatusPlotMaxPoints);
     for (int i = 0; i < kStatusPlotMaxPoints; ++i) {
@@ -256,6 +262,32 @@ bool ClientBackend::restUseHttps() const
 bool ClientBackend::autoConnectOnStartup() const
 {
     return auto_connect_on_startup_;
+}
+
+bool ClientBackend::proxyEnabled() const
+{
+    return proxy_enabled_;
+}
+
+QString ClientBackend::proxyHost() const
+{
+    return proxy_host_;
+}
+
+int ClientBackend::proxyPort() const
+{
+    return proxy_port_;
+}
+
+bool ClientBackend::proxySocks5() const
+{
+    return proxy_socks5_;
+}
+
+QString ClientBackend::proxySummary() const
+{
+    speed::client::ClientSettings cfg = buildSettingsSnapshot();
+    return speed::client::proxySummaryLabel(cfg);
 }
 
 QString ClientBackend::subscribeTopic() const
@@ -440,6 +472,44 @@ void ClientBackend::resetLegacyPingRtt()
     Q_EMIT legacyPingRttChanged();
 }
 
+void ClientBackend::setProxyEnabled(bool value)
+{
+    if (proxy_enabled_ == value) {
+        return;
+    }
+    proxy_enabled_ = value;
+    Q_EMIT proxySettingsChanged();
+}
+
+void ClientBackend::setProxyHost(const QString &value)
+{
+    const QString trimmed = value.trimmed();
+    if (proxy_host_ == trimmed) {
+        return;
+    }
+    proxy_host_ = trimmed.isEmpty() ? QStringLiteral("127.0.0.1") : trimmed;
+    Q_EMIT proxySettingsChanged();
+}
+
+void ClientBackend::setProxyPort(int value)
+{
+    const int clamped = qBound(1, value, 65535);
+    if (proxy_port_ == clamped) {
+        return;
+    }
+    proxy_port_ = clamped;
+    Q_EMIT proxySettingsChanged();
+}
+
+void ClientBackend::setProxySocks5(bool value)
+{
+    if (proxy_socks5_ == value) {
+        return;
+    }
+    proxy_socks5_ = value;
+    Q_EMIT proxySettingsChanged();
+}
+
 void ClientBackend::setAutoConnectOnStartup(bool value)
 {
     if (auto_connect_on_startup_ == value) {
@@ -461,7 +531,7 @@ void ClientBackend::setAutoConnectOnStartup(bool value)
     Q_EMIT autoConnectOnStartupChanged();
 }
 
-void ClientBackend::saveSettings()
+speed::client::ClientSettings ClientBackend::buildSettingsSnapshot() const
 {
     speed::client::ClientSettings cfg;
     cfg.legacy_host = legacy_host_;
@@ -472,9 +542,45 @@ void ClientBackend::saveSettings()
     cfg.subscribe_topic = subscribe_topic_;
     cfg.echo_text = echo_text_;
     cfg.auto_connect_on_startup = auto_connect_on_startup_;
-    cfg.save();
+    cfg.proxy_enabled = proxy_enabled_;
+    cfg.proxy_host = proxy_host_;
+    cfg.proxy_port = static_cast<quint16>(proxy_port_);
+    cfg.proxy_socks5 = proxy_socks5_;
+    return cfg;
+}
+
+void ClientBackend::saveSettings()
+{
+    buildSettingsSnapshot().save();
     appendLog(QStringLiteral("[配置] 已保存"));
     Q_EMIT toastRequested(QStringLiteral("配置已保存"), QStringLiteral("success"));
+}
+
+void ClientBackend::syncNetworkProxy()
+{
+    speed::client::applyNetworkProxy(buildSettingsSnapshot());
+}
+
+void ClientBackend::reconnectChannelsAfterProxyChange()
+{
+    if (legacyConnected()) {
+        manual_legacy_disconnect_ = false;
+        legacy_->disconnectFromServer();
+        scheduleAutoReconnect(kReconnectDelaySessionLostMs);
+    }
+    fetchServerSnapshot();
+}
+
+void ClientBackend::applyProxySettings()
+{
+    syncNetworkProxy();
+    buildSettingsSnapshot().save();
+    const QString summary = proxySummary();
+    appendLog(QStringLiteral("[代理] %1").arg(summary));
+    reconnectChannelsAfterProxyChange();
+    Q_EMIT toastRequested(proxy_enabled_ ? QStringLiteral("代理已启用：%1").arg(summary)
+                                         : QStringLiteral("已切换为直连"),
+                          QStringLiteral("success"));
 }
 
 void ClientBackend::connectLegacy()

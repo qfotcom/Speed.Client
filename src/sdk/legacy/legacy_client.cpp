@@ -2,6 +2,7 @@
 #include "legacy/legacy_protocol.hpp"
 
 #include <QElapsedTimer>
+#include <QNetworkProxy>
 #include <QTcpSocket>
 #include <QTimer>
 #include <QtEndian>
@@ -76,6 +77,7 @@ void LegacyClient::connectToServer()
     read_phase_ = ReadPhase::Idle;
     read_buffer_.clear();
     socket_->setSocketOption(QAbstractSocket::LowDelayOption, 1);
+    socket_->setProxy(QNetworkProxy::applicationProxy());
     socket_->connectToHost(host_, port_);
 }
 

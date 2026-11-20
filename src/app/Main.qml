@@ -2,6 +2,7 @@ import QtQuick
 import SenseAppShell 1.0
 import SenseDesign
 import "page-config.js" as PageConfig
+import "components"
 
 ShadcnAppWindow {
     id: shell
@@ -15,6 +16,11 @@ ShadcnAppWindow {
     navGroups: PageConfig.navGroups
     navGroupOrder: PageConfig.navGroupOrder
     currentPage: "dashboard"
+    titleBarTrailing: [ proxyTitle ]
+
+    ClientProxyTitleControl {
+        id: proxyTitle
+    }
 
     ShadcnSonner {
         id: sonner

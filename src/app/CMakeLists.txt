@@ -70,6 +70,7 @@ qt_add_qml_module(SpeedClient
         components/ClientStatusAlert.qml
         components/ClientHttpStatus.js
         components/EventLogPanel.qml
+        components/ClientProxyTitleControl.qml
 )
 
 if(WIN32)
