@@ -138,6 +138,7 @@ void LegacyClient::updatePollTimer()
 
 void LegacyClient::onConnected()
 {
+    socket_->setSocketOption(QAbstractSocket::LowDelayOption, 1);
     setConnected(true);
     updatePollTimer();
     flushWriteQueue();
