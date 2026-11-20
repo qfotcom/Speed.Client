@@ -5,7 +5,6 @@
 #include <QTcpSocket>
 #include <QTimer>
 #include <QtEndian>
-#include <QtGlobal>
 
 #include <cstring>
 
@@ -76,8 +75,6 @@ void LegacyClient::connectToServer()
     active_line_.clear();
     read_phase_ = ReadPhase::Idle;
     read_buffer_.clear();
-    ping_rtt_excluded_ms_ = 0;
-    ping_rtt_recv_exclude_mark_ = -1;
     socket_->setSocketOption(QAbstractSocket::LowDelayOption, 1);
     socket_->connectToHost(host_, port_);
 }
@@ -158,8 +155,6 @@ void LegacyClient::onDisconnected()
     setConnected(false);
     setBusy(false);
     ping_rtt_waiting_ = false;
-    ping_rtt_excluded_ms_ = 0;
-    ping_rtt_recv_exclude_mark_ = -1;
     poll_timer_->stop();
     outbound_lines_.clear();
     active_line_.clear();
@@ -220,9 +215,6 @@ void LegacyClient::onPollTick()
 
 void LegacyClient::beginReadFrame()
 {
-    if (ping_rtt_waiting_ && ping_rtt_timer_->isValid()) {
-        ping_rtt_recv_exclude_mark_ = ping_rtt_timer_->elapsed();
-    }
     read_phase_ = ReadPhase::Length;
     read_buffer_.clear();
     pending_body_length_ = 0;
@@ -247,20 +239,11 @@ void LegacyClient::finishFrame(const QByteArray &body)
         Q_EMIT pushReceived(topic, payload);
     }
 
-    if (ping_rtt_waiting_ && ping_rtt_timer_->isValid() && parsed.primary_line.isEmpty()
-        && ping_rtt_recv_exclude_mark_ >= 0) {
-        ping_rtt_excluded_ms_ += ping_rtt_timer_->elapsed() - ping_rtt_recv_exclude_mark_;
-        ping_rtt_recv_exclude_mark_ = -1;
-    }
-
     if (!parsed.primary_line.isEmpty()) {
         if (ping_rtt_waiting_ && parsed.primary_line == QStringLiteral("PONG")
             && ping_rtt_timer_->isValid()) {
             ping_rtt_waiting_ = false;
-            ping_rtt_recv_exclude_mark_ = -1;
-            const qint64 adjusted = ping_rtt_timer_->elapsed() - ping_rtt_excluded_ms_;
-            ping_rtt_excluded_ms_ = 0;
-            Q_EMIT pingRttMeasured(static_cast<int>(qMax<qint64>(0, adjusted)));
+            Q_EMIT pingRttMeasured(static_cast<int>(ping_rtt_timer_->elapsed()));
         }
         Q_EMIT responseReceived(parsed.primary_line, bodyText);
         setBusy(false);
@@ -277,8 +260,6 @@ void LegacyClient::flushWriteQueue()
     active_line_ = outbound_lines_.dequeue();
     if (active_line_.trimmed() == QStringLiteral("PING")) {
         ping_rtt_waiting_ = true;
-        ping_rtt_excluded_ms_ = 0;
-        ping_rtt_recv_exclude_mark_ = -1;
         ping_rtt_timer_->restart();
     }
     setBusy(true);
