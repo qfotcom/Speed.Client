@@ -51,91 +51,104 @@ Item {
         onCanceled: { /* 关闭即丢弃草稿 */ }
         onConfirmed: root.commitDraft()
 
-        RowLayout {
+        ShadcnCard {
             width: parent.width
-            spacing: 8
-            ShadcnLabel {
-                Layout.fillWidth: true
-                text: qsTr("使用本地代理")
-                font.pixelSize: ShadcnTypography.fontSizeSm
-            }
-            ShadcnSwitch {
-                checked: root.draftEnabled
-                onToggled: root.draftEnabled = checked
-            }
-        }
-
-        ColumnLayout {
-            width: parent.width
-            spacing: 10
-            enabled: root.draftEnabled
-            opacity: enabled ? 1 : 0.5
+            contentMargin: 14
 
             ColumnLayout {
-                Layout.fillWidth: true
-                spacing: 6
-                ShadcnLabel {
-                    text: qsTr("协议")
-                    font.pixelSize: ShadcnTypography.fontSizeXs
-                    color: ShadcnTheme.c("muted-foreground")
-                }
-                ShadcnSlidingSegmented {
+                width: parent.width
+                spacing: 14
+
+                RowLayout {
                     Layout.fillWidth: true
-                    value: root.draftSocks5 ? "socks5" : "http"
-                    segments: [
-                        { value: "socks5", label: "SOCKS5" },
-                        { value: "http", label: "HTTP" }
-                    ]
-                    onOptionActivated: function (v) {
-                        root.draftSocks5 = (v === "socks5")
+                    spacing: 8
+                    ShadcnLabel {
+                        Layout.fillWidth: true
+                        text: qsTr("使用本地代理")
+                        font.pixelSize: ShadcnTypography.fontSizeSm
+                        font.weight: ShadcnTypography.fontWeightMedium
+                    }
+                    ShadcnSwitch {
+                        checked: root.draftEnabled
+                        onToggled: root.draftEnabled = checked
                     }
                 }
-            }
 
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: 8
+                ShadcnSeparator {}
+
                 ColumnLayout {
                     Layout.fillWidth: true
-                    Layout.minimumWidth: 120
-                    spacing: 6
-                    ShadcnLabel {
-                        text: qsTr("主机")
-                        font.pixelSize: ShadcnTypography.fontSizeXs
-                        color: ShadcnTheme.c("muted-foreground")
-                    }
-                    ShadcnInput {
-                        Layout.fillWidth: true
-                        text: root.draftHost
-                        placeholderText: qsTr("127.0.0.1")
-                        onEditingFinished: root.draftHost = text.trim()
-                    }
-                }
-                ColumnLayout {
-                    Layout.preferredWidth: 88
-                    spacing: 6
-                    ShadcnLabel {
-                        text: qsTr("端口")
-                        font.pixelSize: ShadcnTypography.fontSizeXs
-                        color: ShadcnTheme.c("muted-foreground")
-                    }
-                    ShadcnInput {
-                        Layout.fillWidth: true
-                        text: String(root.draftPort)
-                        inputMethodHints: Qt.ImhDigitsOnly
-                        placeholderText: "7890"
-                        onEditingFinished:
-                            root.draftPort = parseInt(text) || 7890
-                    }
-                }
-            }
+                    spacing: 10
+                    enabled: root.draftEnabled
+                    opacity: enabled ? 1 : 0.5
 
-            ShadcnLabel {
-                Layout.fillWidth: true
-                wrapMode: Text.WordWrap
-                font.pixelSize: ShadcnTypography.fontSizeXs
-                color: ShadcnTheme.c("muted-foreground")
-                text: qsTr("与「连接」页端点独立；本机 Clash 等常用 SOCKS5 · 127.0.0.1:7890。")
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 6
+                        ShadcnLabel {
+                            text: qsTr("协议")
+                            font.pixelSize: ShadcnTypography.fontSizeXs
+                            color: ShadcnTheme.c("muted-foreground")
+                        }
+                        ShadcnSlidingSegmented {
+                            Layout.fillWidth: true
+                            value: root.draftSocks5 ? "socks5" : "http"
+                            segments: [
+                                { value: "socks5", label: "SOCKS5" },
+                                { value: "http", label: "HTTP" }
+                            ]
+                            onOptionActivated: function (v) {
+                                root.draftSocks5 = (v === "socks5")
+                            }
+                        }
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 8
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            Layout.minimumWidth: 120
+                            spacing: 6
+                            ShadcnLabel {
+                                text: qsTr("主机")
+                                font.pixelSize: ShadcnTypography.fontSizeXs
+                                color: ShadcnTheme.c("muted-foreground")
+                            }
+                            ShadcnInput {
+                                Layout.fillWidth: true
+                                text: root.draftHost
+                                placeholderText: qsTr("127.0.0.1")
+                                onEditingFinished: root.draftHost = text.trim()
+                            }
+                        }
+                        ColumnLayout {
+                            Layout.preferredWidth: 88
+                            spacing: 6
+                            ShadcnLabel {
+                                text: qsTr("端口")
+                                font.pixelSize: ShadcnTypography.fontSizeXs
+                                color: ShadcnTheme.c("muted-foreground")
+                            }
+                            ShadcnInput {
+                                Layout.fillWidth: true
+                                text: String(root.draftPort)
+                                inputMethodHints: Qt.ImhDigitsOnly
+                                placeholderText: "7890"
+                                onEditingFinished:
+                                    root.draftPort = parseInt(text) || 7890
+                            }
+                        }
+                    }
+
+                    ShadcnLabel {
+                        Layout.fillWidth: true
+                        wrapMode: Text.WordWrap
+                        font.pixelSize: ShadcnTypography.fontSizeXs
+                        color: ShadcnTheme.c("muted-foreground")
+                        text: qsTr("与「连接」页端点独立；本机 Clash 等常用 SOCKS5 · 127.0.0.1:7890。")
+                    }
+                }
             }
         }
     }
